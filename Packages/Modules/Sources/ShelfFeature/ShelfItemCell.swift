@@ -64,6 +64,11 @@ struct ShelfItemCell: View {
                 )
             }
         }
+        // Anchored to the tile (so it stays above the drag source in hit-testing — see the
+        // overlay above), but offset back in to sit at the thumbnail's corner rather than the
+        // wider tile's: the thumbnail is inset ~10pt from the tile's edges (56pt thumbnail
+        // centered under the ~64pt content width the grid gives this cell, plus 6pt padding), and
+        // the top edges of thumbnail and tile coincide once that same padding is undone.
         .overlay(alignment: .topTrailing) {
             if isHovering {
                 Button(action: onRemove) {
@@ -74,7 +79,7 @@ struct ShelfItemCell: View {
                 }
                 .buttonStyle(.plain)
                 .focusEffectDisabled()
-                .offset(x: 6, y: -6)
+                .offset(x: -4, y: 0)
                 .accessibilityLabel("Remove \(item.displayName)")
             }
         }

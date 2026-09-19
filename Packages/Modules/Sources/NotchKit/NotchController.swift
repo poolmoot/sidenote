@@ -94,15 +94,19 @@ public final class NotchController {
         container.onFileDrop = { [weak self] urls in self?.drop(urls) ?? false }
 
         panel.onEscape = { [weak self] in self?.send(.escape) }
-        // While a widget holds the editing lock (a text field, or a Shelf drag/Quick Look — see
-        // ShelfView), losing key status is usually a side effect of something *we* did (e.g. a
-        // Quick Look panel taking key to show a preview), not the user leaving. Forwarding
-        // .resignedKey there would fold the notch and dismiss whatever depended on it still being
-        // open. The state machine's own .resignedKey rule stays "fold whenever expanded" — this
-        // is a controller-level guard so that behaviour (and its test) is untouched for the
-        // ordinary case (e.g. cmd-tabbing away while folded or between edits).
+        // Spec §3.1: clicking outside the notch folds it, even while editing — that must not be
+        // swallowed just because a widget holds the editing lock. But losing key status while
+        // editing can also be *our own doing and nothing else* (e.g. Quick Look's preview panel
+        // taking key to show a file) — in that case the app is still active, just a different one
+        // of our own windows is key, and folding would dismiss the preview it belongs to. So the
+        // two are told apart by `NSApp.isActive`: still active + editing means key moved inside
+        // this app; not active means the user genuinely left, and that always folds regardless of
+        // the editing lock. The state machine's own .resignedKey rule is untouched (still folds
+        // unconditionally whenever expanded, and its test still passes) — this is a
+        // controller-level guard for the one specific case that must not reach it.
         panel.onResignKey = { [weak self] in
-            guard let self, !machine.isEditing else { return }
+            guard let self else { return }
+            if machine.isEditing, NSApp.isActive { return }
             send(.resignedKey)
         }
         panel.contextMenuProvider = { [weak self] in self?.contextMenuProvider() }
