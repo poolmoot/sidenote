@@ -79,10 +79,17 @@ final class NotchContainerView: NSView {
     // MARK: File drops
 
     override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
-        draggingUpdated(sender)
+        guard sender.draggingSource == nil else { return [] }
+        return draggingUpdated(sender)
     }
 
+    /// `draggingSource` is only non-nil when the drag originated inside this process — AppKit
+    /// never hands back the source object across a process boundary — so this is exactly how to
+    /// tell the shelf's own drag-out apart from a real incoming drop from Finder or another app.
+    /// Treating it as "not a drop target" here means it never shows "Drop here" or forces a fold
+    /// mid-drag (the widget already knows what it's dragging and ends the session itself).
     override func draggingUpdated(_ sender: any NSDraggingInfo) -> NSDragOperation {
+        guard sender.draggingSource == nil else { return [] }
         let location = convert(sender.draggingLocation, from: nil)
         let inside = hotRect.contains(location) && Self.hasFileURLs(sender.draggingPasteboard)
         if inside != isDragInside {
@@ -93,12 +100,14 @@ final class NotchContainerView: NSView {
     }
 
     override func draggingExited(_ sender: (any NSDraggingInfo)?) {
+        guard sender?.draggingSource == nil else { return }
         guard isDragInside else { return }
         isDragInside = false
         onFileDragExited?()
     }
 
     override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
+        guard sender.draggingSource == nil else { return false }
         isDragInside = false
         let urls = Self.fileURLs(sender.draggingPasteboard)
         guard !urls.isEmpty else {

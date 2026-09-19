@@ -94,7 +94,17 @@ public final class NotchController {
         container.onFileDrop = { [weak self] urls in self?.drop(urls) ?? false }
 
         panel.onEscape = { [weak self] in self?.send(.escape) }
-        panel.onResignKey = { [weak self] in self?.send(.resignedKey) }
+        // While a widget holds the editing lock (a text field, or a Shelf drag/Quick Look — see
+        // ShelfView), losing key status is usually a side effect of something *we* did (e.g. a
+        // Quick Look panel taking key to show a preview), not the user leaving. Forwarding
+        // .resignedKey there would fold the notch and dismiss whatever depended on it still being
+        // open. The state machine's own .resignedKey rule stays "fold whenever expanded" — this
+        // is a controller-level guard so that behaviour (and its test) is untouched for the
+        // ordinary case (e.g. cmd-tabbing away while folded or between edits).
+        panel.onResignKey = { [weak self] in
+            guard let self, !machine.isEditing else { return }
+            send(.resignedKey)
+        }
         panel.contextMenuProvider = { [weak self] in self?.contextMenuProvider() }
         panel.onDragStart = { [weak self] in self?.cancelTimers() }
         panel.onDrag = { [weak self] _, dy in self?.slide(by: dy) }
@@ -106,7 +116,15 @@ public final class NotchController {
         model.onSelect = { [weak self] in self?.send(.tileSelected($0)) }
         model.onBack = { [weak self] in self?.send(.back) }
         model.onClose = { [weak self] in self?.send(.escape) }
-        model.onEditingChanged = { [weak self] in self?.send($0 ? .editingBegan : .editingEnded) }
+        model.onEditingChanged = { [weak self] isEditing in
+            guard let self else { return }
+            send(isEditing ? .editingBegan : .editingEnded)
+            // A drag (and, transitively, a Quick Look preview holding the lock) suppresses
+            // ordinary tracking events for its duration, so the container's notion of where the
+            // pointer is goes stale. Re-learn it whenever a widget lets go of the lock, the same
+            // way `concludeDragOperation` already does for an incoming file drag.
+            if !isEditing { container.syncPointer() }
+        }
         model.onOpenSettings = { [weak self] in
             self?.send(.escape)
             self?.onOpenSettings()
