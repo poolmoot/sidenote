@@ -1,0 +1,14 @@
+# Xcode / XcodeGen
+*.xcodeproj/
+build/
+DerivedData/
+.build/
+.swiftpm/
+*.xcuserstate
+xcuserdata/
+
+# Local tools installed by Scripts/bootstrap.sh
+.tools/
+
+# macOS
+.DS_Store

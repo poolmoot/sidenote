@@ -1,0 +1,6 @@
+// The app's identity — the ONLY place its name is written.
+// After editing, run `make generate` (or any make target) and rebuild.
+// Changing BUNDLE_ID_PREFIX or APP_NAME gives the app a new identity: fresh preferences and data.
+
+APP_NAME = SideNotch
+BUNDLE_ID_PREFIX = com.example

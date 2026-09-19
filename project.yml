@@ -1,0 +1,56 @@
+# Generates App.xcodeproj (git-ignored). Run `make generate` after editing this file.
+# Names here are deliberately generic: the product name and bundle ID come from
+# Config/Branding.xcconfig, so renaming the app never touches this file.
+name: App
+options:
+  deploymentTarget:
+    macOS: "26.0"
+  createIntermediateGroups: true
+
+configFiles:
+  Debug: Config/Branding.xcconfig
+  Release: Config/Branding.xcconfig
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    # Ad-hoc signing: no Apple Developer account needed. See the spec, §9–10.
+    CODE_SIGN_IDENTITY: "-"
+    CODE_SIGN_STYLE: Manual
+    DEVELOPMENT_TEAM: ""
+    ENABLE_HARDENED_RUNTIME: YES
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    DEAD_CODE_STRIPPING: YES
+
+packages:
+  Modules:
+    path: Packages/Modules
+
+targets:
+  App:
+    type: application
+    platform: macOS
+    sources:
+      - path: App/Sources
+    settings:
+      base:
+        PRODUCT_NAME: $(APP_NAME)
+        PRODUCT_BUNDLE_IDENTIFIER: $(BUNDLE_ID_PREFIX).$(APP_NAME:lower)
+        PRODUCT_MODULE_NAME: App
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: $(APP_NAME)
+        INFOPLIST_KEY_LSUIElement: YES
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
+        CODE_SIGN_ENTITLEMENTS: Config/App.entitlements
+    dependencies:
+      - package: Modules
+        product: AppInfo
+      - package: Modules
+        product: NotchWidgetAPI
+      - package: Modules
+        product: NotchKit
+      - package: Modules
+        product: SettingsFeature
+    scheme: {}
