@@ -20,6 +20,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.environment = environment
     }
 
+    func applicationWillTerminate(_ notification: Notification) {
+        environment?.flush()
+    }
+
     @objc private func showSettings(_ sender: Any?) {
         environment?.showSettings()
     }

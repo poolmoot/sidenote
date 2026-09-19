@@ -53,4 +53,8 @@ targets:
         product: NotchKit
       - package: Modules
         product: SettingsFeature
+      - package: Modules
+        product: Persistence
+      - package: Modules
+        product: ShelfFeature
     scheme: {}

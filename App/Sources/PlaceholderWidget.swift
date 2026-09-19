@@ -2,9 +2,9 @@ import SwiftUI
 import Observation
 import NotchWidgetAPI
 
-/// Stand-ins for the three mini apps until their milestones land (Shelf M2, Notes M3,
-/// Reminders M4). Each exercises one piece of notch plumbing: the shelf takes file drops, and every
-/// placeholder has a text field that engages the editing lock.
+/// Stand-ins for the mini apps that haven't landed yet (Notes M3, Reminders M4). The Shelf
+/// placeholder is gone now that `ShelfWidget` (M2) is real. Each placeholder has a text field
+/// that engages the editing lock, so that plumbing keeps getting exercised.
 @MainActor
 @Observable
 final class PlaceholderWidget: NotchWidget {
@@ -26,7 +26,6 @@ final class PlaceholderWidget: NotchWidget {
 
     static func all() -> [PlaceholderWidget] {
         [
-            PlaceholderWidget(id: .shelf, title: "Shelf", systemImage: "tray", milestone: "M2", acceptsFileDrops: true),
             PlaceholderWidget(id: .notes, title: "Notes", systemImage: "note.text", milestone: "M3"),
             PlaceholderWidget(id: .reminders, title: "Reminders", systemImage: "bell", milestone: "M4"),
         ]

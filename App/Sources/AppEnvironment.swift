@@ -1,7 +1,11 @@
 import AppKit
 import Observation
+import AppInfo
 import NotchKit
+import NotchWidgetAPI
 import SettingsFeature
+import Persistence
+import ShelfFeature
 
 /// The composition root: the one place that builds every object and wires modules together.
 /// Modules never reach for each other directly.
@@ -11,11 +15,18 @@ final class AppEnvironment {
     private let notch: NotchController
     private let settings: SettingsWindowController
     private let statusItem: StatusItemController
+    private let shelfStore: ShelfStore
 
     init() {
         let preferences = Preferences()
         let settings = SettingsWindowController(preferences: preferences)
-        let notch = NotchController(widgets: PlaceholderWidget.all(), configuration: preferences.notchConfiguration)
+
+        let shelfFileStore = JSONFileStore<ShelfDocument>(url: Self.makeShelfFileURL())
+        let shelfStore = ShelfStore(store: shelfFileStore)
+        let shelfWidget = ShelfWidget(store: shelfStore)
+
+        let widgets: [any NotchWidget] = [shelfWidget] + PlaceholderWidget.all()
+        let notch = NotchController(widgets: widgets, configuration: preferences.notchConfiguration)
         let statusItem = StatusItemController(
             isNotchVisible: { preferences.isNotchVisible },
             onOpenSettings: { settings.show() },
@@ -30,6 +41,7 @@ final class AppEnvironment {
         self.settings = settings
         self.notch = notch
         self.statusItem = statusItem
+        self.shelfStore = shelfStore
     }
 
     func start() {
@@ -40,6 +52,22 @@ final class AppEnvironment {
 
     func showSettings() {
         settings.show()
+    }
+
+    /// Writes any pending content synchronously. Called from `applicationWillTerminate`.
+    func flush() {
+        shelfStore.flush()
+    }
+
+    /// `shelf.json`'s URL, falling back to a temporary directory in the unlikely event
+    /// Application Support can't be resolved or created, so the app still runs (with content
+    /// that won't survive relaunch) rather than crashing at startup.
+    private static func makeShelfFileURL() -> URL {
+        if let url = try? AppPaths.shelfFile() {
+            return url
+        }
+        AppIdentity.current.logger("persistence").error("Falling back to a temporary shelf file: Application Support was unavailable.")
+        return FileManager.default.temporaryDirectory.appendingPathComponent("shelf.json")
     }
 
     /// Pushes every preference change into the notch. `withObservationTracking` fires once, so it
