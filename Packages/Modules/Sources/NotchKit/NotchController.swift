@@ -205,7 +205,12 @@ public final class NotchController {
         let rect = NotchGeometry.shapeRect(
             panelSize: panel.frame.size, edge: configuration.edge, size: size, alongOffset: configuration.alongOffset
         )
-        let hot = NotchGeometry.hotRect(shapeRect: rect, edge: configuration.edge, margin: metrics.hoverMargin)
+        let hot = NotchGeometry.hotRect(
+            shapeRect: rect,
+            edge: configuration.edge,
+            margin: state == .folded ? metrics.foldedHoverMargin : metrics.hoverMargin,
+            lengthInset: state == .folded ? metrics.flare : 0
+        )
         let radius = metrics.cornerRadius(for: state)
 
         model.hotRect = hot

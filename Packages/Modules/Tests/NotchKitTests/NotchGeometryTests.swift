@@ -109,3 +109,24 @@ struct NotchMetricsTests {
         #expect(rect == CGRect(x: 110, y: 122, width: 44, height: 156))
     }
 }
+
+struct HotRectTests {
+    let folded = CGRect(x: 320, y: 400, width: 6, height: 96)   // pill body 72 + 12 flare each end
+
+    @Test func foldedHotAreaStaysAtTheEdgeAndSkipsTheFlares() {
+        let hot = NotchGeometry.hotRect(shapeRect: folded, edge: .right, margin: 2, lengthInset: 12)
+        #expect(hot == CGRect(x: 318, y: 412, width: 8, height: 72))
+    }
+
+    @Test func lengthInsetNeverInvertsTheRect() {
+        let hot = NotchGeometry.hotRect(shapeRect: folded, edge: .right, margin: 2, lengthInset: 500)
+        #expect(hot.height == 0)
+        #expect(hot.minY == folded.midY)
+    }
+
+    @Test func expandedHotAreaKeepsItsFullLength() {
+        let expanded = CGRect(x: 6, y: 100, width: 320, height: 444)
+        let hot = NotchGeometry.hotRect(shapeRect: expanded, edge: .left, margin: 6)
+        #expect(hot == CGRect(x: 6, y: 100, width: 326, height: 444))
+    }
+}

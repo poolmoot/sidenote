@@ -27,6 +27,9 @@ public struct NotchMetrics: Equatable, Sendable {
     public var flare: CGFloat = 12
     /// Extra depth, beyond the shape, that still counts as hovering it.
     public var hoverMargin: CGFloat = 6
+    /// The same, for the folded pill. Much tighter: the pill is meant to react when the pointer
+    /// reaches the screen edge, not when it merely passes nearby.
+    public var foldedHoverMargin: CGFloat = 2
     public var defaultExpandedSize = CGSize(width: 320, height: 420)
 
     public init() {}

@@ -29,11 +29,23 @@ public enum NotchGeometry {
         return clamp(offset, min: -limit, max: limit)
     }
 
-    /// The region that receives hover and drops: the shape grown inward by `margin`.
-    public static func hotRect(shapeRect: CGRect, edge: NotchEdge, margin: CGFloat) -> CGRect {
+    /// The region that receives hover and drops: the shape grown inward by `margin`, and
+    /// optionally shortened by `lengthInset` at each end.
+    ///
+    /// The folded pill shortens by its flares: those taper away from the bezel, so treating the
+    /// full shape as live makes the notch open for a pointer that never reached the edge.
+    public static func hotRect(
+        shapeRect: CGRect,
+        edge: NotchEdge,
+        margin: CGFloat,
+        lengthInset: CGFloat = 0
+    ) -> CGRect {
         var rect = shapeRect
         rect.size.width += margin
         if edge == .right { rect.origin.x -= margin }
+        let inset = min(lengthInset, rect.height / 2)
+        rect.origin.y += inset
+        rect.size.height -= 2 * inset
         return rect
     }
 
