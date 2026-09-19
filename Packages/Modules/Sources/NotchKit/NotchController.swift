@@ -68,6 +68,9 @@ public final class NotchController {
         if old.isVisible != newValue.isVisible {
             applyVisibility()
         }
+        if old.hidesInFullScreen != newValue.hidesInFullScreen {
+            updateGhosting()
+        }
     }
 
     /// Feeds one event through the state machine and carries out what it asks for.
@@ -134,7 +137,7 @@ public final class NotchController {
             self?.onOpenSettings()
         }
 
-        fullScreen.onChange = { [weak self] isFullScreen in self?.model.isGhosted = isFullScreen }
+        fullScreen.onChange = { [weak self] _ in self?.updateGhosting() }
     }
 
     // MARK: Effects
@@ -225,6 +228,11 @@ public final class NotchController {
             apply()
         }
         container.setHotRect(hot)
+    }
+
+    /// The pill only disappears under a full-screen app when the user asked for that.
+    private func updateGhosting() {
+        model.isGhosted = configuration.hidesInFullScreen && fullScreen.isFullScreen
     }
 
     private func applyVisibility() {

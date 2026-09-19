@@ -15,9 +15,9 @@ public struct NotchShapeSize: Equatable, Sendable {
 
 /// Every fixed dimension of the notch, in points.
 public struct NotchMetrics: Equatable, Sendable {
-    public var foldedDepth: CGFloat = 6
-    public var foldedBodyLength: CGFloat = 72
-    public var foldedCornerRadius: CGFloat = 3
+    public var foldedDepth: CGFloat = 11
+    public var foldedBodyLength: CGFloat = 88
+    public var foldedCornerRadius: CGFloat = 5
     public var tilesDepth: CGFloat = 64
     public var tileExtent: CGFloat = 52
     public var gearExtent: CGFloat = 36

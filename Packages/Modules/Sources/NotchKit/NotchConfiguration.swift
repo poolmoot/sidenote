@@ -9,6 +9,9 @@ public struct NotchConfiguration: Equatable, Sendable {
     /// How far the pill's centre sits below the middle of the edge, in points.
     public var alongOffset: CGFloat
     public var isVisible: Bool
+    /// Hide the folded pill while a full-screen app is in front. Off by default: the pill is meant
+    /// to stay reachable in every app, and a hidden pill reads as the app not running at all.
+    public var hidesInFullScreen: Bool
     public var hoverDelay: Duration
     public var graceDelay: Duration
 
@@ -17,6 +20,7 @@ public struct NotchConfiguration: Equatable, Sendable {
         displayID: String? = nil,
         alongOffset: CGFloat = 0,
         isVisible: Bool = true,
+        hidesInFullScreen: Bool = false,
         hoverDelay: Duration = .milliseconds(150),
         graceDelay: Duration = .milliseconds(250)
     ) {
@@ -24,6 +28,7 @@ public struct NotchConfiguration: Equatable, Sendable {
         self.displayID = displayID
         self.alongOffset = alongOffset
         self.isVisible = isVisible
+        self.hidesInFullScreen = hidesInFullScreen
         self.hoverDelay = hoverDelay
         self.graceDelay = graceDelay
     }

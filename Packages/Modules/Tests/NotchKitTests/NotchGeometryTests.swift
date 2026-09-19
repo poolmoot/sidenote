@@ -75,7 +75,7 @@ struct NotchMetricsTests {
 
     @Test func foldedSizeIncludesFlares() {
         let size = metrics.shapeSize(for: .folded, tileCount: 3, expandedSizes: [:])
-        #expect(size == NotchShapeSize(depth: 6, length: 72 + 24))
+        #expect(size == NotchShapeSize(depth: metrics.foldedDepth, length: metrics.foldedBodyLength + 24))
     }
 
     @Test func tilesLengthGrowsWithTileCount() {
