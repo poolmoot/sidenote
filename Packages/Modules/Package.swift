@@ -12,6 +12,7 @@ let package = Package(
         .library(name: "SettingsFeature", targets: ["SettingsFeature"]),
         .library(name: "Persistence", targets: ["Persistence"]),
         .library(name: "ShelfFeature", targets: ["ShelfFeature"]),
+        .library(name: "NotesFeature", targets: ["NotesFeature"]),
     ],
     targets: [
         .target(name: "AppInfo"),
@@ -21,10 +22,12 @@ let package = Package(
         .target(name: "SettingsFeature", dependencies: ["NotchKit", "AppInfo"]),
         .target(name: "Persistence", dependencies: ["AppInfo"]),
         .target(name: "ShelfFeature", dependencies: ["NotchWidgetAPI", "Persistence", "DesignSystem", "AppInfo"]),
+        .target(name: "NotesFeature", dependencies: ["NotchWidgetAPI", "Persistence", "DesignSystem", "AppInfo"]),
         .testTarget(name: "AppInfoTests", dependencies: ["AppInfo"]),
         .testTarget(name: "NotchKitTests", dependencies: ["NotchKit", "NotchWidgetAPI"]),
         .testTarget(name: "SettingsFeatureTests", dependencies: ["SettingsFeature"]),
         .testTarget(name: "PersistenceTests", dependencies: ["Persistence"]),
         .testTarget(name: "ShelfFeatureTests", dependencies: ["ShelfFeature"]),
+        .testTarget(name: "NotesFeatureTests", dependencies: ["NotesFeature", "Persistence"]),
     ]
 )
