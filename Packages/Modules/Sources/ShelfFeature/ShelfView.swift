@@ -14,8 +14,9 @@ struct ShelfView: View {
     /// (spec §3.3, §7).
     @State private var thumbnailLoader = ThumbnailLoader()
     @State private var selection: Set<ShelfItem.ID> = []
-    @State private var hoveredID: ShelfItem.ID?
     @State private var quickLookURL: URL?
+    /// Whether `quickLookURL`'s security scope is currently open, so it's closed exactly once.
+    @State private var quickLookAccessGranted = false
 
     private let columns = [GridItem(.adaptive(minimum: 76), spacing: 8)]
 
@@ -28,11 +29,25 @@ struct ShelfView: View {
                 grid
             }
         }
-        .focusable()
-        .onKeyPress(.space) {
-            guard let id = quickLookCandidate, let url = store.url(for: id) else { return .ignored }
-            quickLookURL = url
-            return .handled
+        // A resolve isn't free (and can refresh a bookmark), so it happens once here rather than
+        // from every cell's body — see `ShelfStore.refreshMissingStatus`.
+        .onAppear { store.refreshMissingStatus() }
+        // Spec §4.5: written on fold, not just at app termination.
+        .onDisappear { store.flush() }
+        .onChange(of: quickLookURL) { oldValue, newValue in
+            if let oldValue, quickLookAccessGranted {
+                oldValue.stopAccessingSecurityScopedResource()
+                quickLookAccessGranted = false
+            }
+            if let newValue {
+                // Held for as long as the preview is up, and paired with the editing lock so the
+                // preview taking key doesn't fold the notch (see `NotchController`'s guard on
+                // `.resignedKey` while a widget is editing).
+                quickLookAccessGranted = newValue.startAccessingSecurityScopedResource()
+                context.setEditing(true)
+            } else {
+                context.setEditing(false)
+            }
         }
         .quickLookPreview($quickLookURL)
     }
@@ -51,6 +66,7 @@ struct ShelfView: View {
                     selection.removeAll()
                 }
                 .buttonStyle(.plain)
+                .focusEffectDisabled()
                 .font(.caption.bold())
                 .foregroundStyle(Palette.secondaryText)
             }
@@ -92,19 +108,19 @@ struct ShelfView: View {
             isMissing: isMissing,
             isSelected: selection.contains(item.id),
             thumbnail: thumbnailLoader.thumbnail(for: item.id),
-            dragURLsProvider: { dragURLs(draggingFrom: item.id) },
+            itemsProvider: { dragItems(startingWith: item.id) },
             onOpen: { open(item.id) },
             onToggleSelect: { toggleSelection(item.id) },
             onRemove: { remove(item.id) },
-            onDragFinished: { performed in
-                guard performed else { return }
-                store.consume(selectionOrSingle(item.id))
-                selection.removeAll()
-            }
+            onDragStarted: { context.setEditing(true) },
+            onDragFinished: { draggedIDs, performed in
+                context.setEditing(false)
+                guard performed, !draggedIDs.isEmpty else { return }
+                store.consume(draggedIDs)
+                selection.subtract(draggedIDs)
+            },
+            onSpacePressed: { showQuickLook(for: item.id) }
         )
-        .onHover { isHovering in
-            hoveredID = isHovering ? item.id : (hoveredID == item.id ? nil : hoveredID)
-        }
         .task(id: item.id) {
             guard !isMissing, let url = store.url(for: item.id) else { return }
             thumbnailLoader.load(id: item.id, url: url)
@@ -113,15 +129,14 @@ struct ShelfView: View {
 
     // MARK: Actions
 
-    private var quickLookCandidate: ShelfItem.ID? {
-        hoveredID ?? (selection.count == 1 ? selection.first : nil)
-    }
-
-    /// The URLs a drag starting on `id` should carry: every selected item when `id` is part of
-    /// the current selection, otherwise just `id` on its own. Called lazily, right as a drag
-    /// begins, never during view rendering.
-    private func dragURLs(draggingFrom id: ShelfItem.ID) -> [URL] {
-        selectionOrSingle(id).compactMap { store.url(for: $0) }
+    /// The (id, url) pairs a drag starting on `id` should carry: every selected item that's
+    /// still resolvable when `id` is part of the current selection, otherwise just `id` on its
+    /// own. Called lazily, right as a drag begins, never during view rendering. A missing
+    /// selected item is silently left out, so it's never reported back as dragged or consumed.
+    private func dragItems(startingWith id: ShelfItem.ID) -> [(id: ShelfItem.ID, url: URL)] {
+        selectionOrSingle(id).compactMap { itemID in
+            store.url(for: itemID).map { (itemID, $0) }
+        }
     }
 
     private func selectionOrSingle(_ id: ShelfItem.ID) -> Set<ShelfItem.ID> {
@@ -146,5 +161,10 @@ struct ShelfView: View {
     private func remove(_ id: ShelfItem.ID) {
         selection.remove(id)
         store.remove([id])
+    }
+
+    private func showQuickLook(for id: ShelfItem.ID) {
+        guard let url = store.url(for: id) else { return }
+        quickLookURL = url
     }
 }

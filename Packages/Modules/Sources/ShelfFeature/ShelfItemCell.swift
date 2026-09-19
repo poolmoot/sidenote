@@ -10,34 +10,22 @@ struct ShelfItemCell: View {
     let isMissing: Bool
     let isSelected: Bool
     let thumbnail: NSImage?
-    let dragURLsProvider: () -> [URL]
+    let itemsProvider: () -> [(id: ShelfItem.ID, url: URL)]
     let onOpen: () -> Void
     let onToggleSelect: () -> Void
     let onRemove: () -> Void
-    let onDragFinished: (Bool) -> Void
+    let onDragStarted: () -> Void
+    let onDragFinished: (Set<ShelfItem.ID>, Bool) -> Void
+    let onSpacePressed: () -> Void
 
     @State private var isHovering = false
 
     var body: some View {
         VStack(spacing: 4) {
-            ZStack(alignment: .topTrailing) {
-                thumbnailView
-                    .frame(width: 56, height: 56)
-                    .opacity(isMissing ? 0.4 : 1)
-                    .background(Palette.tileFill, in: RoundedRectangle(cornerRadius: 8))
-
-                if isHovering {
-                    Button(action: onRemove) {
-                        Image(systemName: "xmark.circle.fill")
-                            .symbolRenderingMode(.palette)
-                            .foregroundStyle(.white, .black.opacity(0.6))
-                            .font(.system(size: 15))
-                    }
-                    .buttonStyle(.plain)
-                    .offset(x: 6, y: -6)
-                    .accessibilityLabel("Remove \(item.displayName)")
-                }
-            }
+            thumbnailView
+                .frame(width: 56, height: 56)
+                .opacity(isMissing ? 0.4 : 1)
+                .background(Palette.tileFill, in: RoundedRectangle(cornerRadius: 8))
 
             Text(item.displayName)
                 .font(.caption2)
@@ -54,11 +42,15 @@ struct ShelfItemCell: View {
         .padding(6)
         .frame(width: 76)
         .background(isSelected ? Palette.tileHover : Color.clear, in: RoundedRectangle(cornerRadius: 10))
-        .onHover { isHovering = $0 }
+        .contentShape(Rectangle())
+        // The drag source sits below the ✕: it's an AppKit `NSView` that would otherwise swallow
+        // every mouse-down in the cell, including a click meant for the button layered on top of
+        // it. Hover is driven by `.onHover` on this same outer view (not from anything under the
+        // NSView), so it isn't at the mercy of what that view does with mouse events.
         .overlay {
             if !isMissing {
                 FileDragSource(
-                    urlsProvider: dragURLsProvider,
+                    itemsProvider: itemsProvider,
                     onClick: { isCommandDown in
                         if isCommandDown {
                             onToggleSelect()
@@ -66,11 +58,27 @@ struct ShelfItemCell: View {
                             onOpen()
                         }
                     },
-                    onDragFinished: onDragFinished
+                    onDragStarted: onDragStarted,
+                    onDragFinished: onDragFinished,
+                    onSpacePressed: onSpacePressed
                 )
             }
         }
-        .contentShape(Rectangle())
+        .overlay(alignment: .topTrailing) {
+            if isHovering {
+                Button(action: onRemove) {
+                    Image(systemName: "xmark.circle.fill")
+                        .symbolRenderingMode(.palette)
+                        .foregroundStyle(.white, .black.opacity(0.6))
+                        .font(.system(size: 15))
+                }
+                .buttonStyle(.plain)
+                .focusEffectDisabled()
+                .offset(x: 6, y: -6)
+                .accessibilityLabel("Remove \(item.displayName)")
+            }
+        }
+        .onHover { isHovering = $0 }
         .onTapGesture {
             // Missing items have no drag source overlay to field the click, so handle it here.
             guard isMissing else { return }

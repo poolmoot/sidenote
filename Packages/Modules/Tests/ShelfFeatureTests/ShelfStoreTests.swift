@@ -77,9 +77,60 @@ final class ShelfStoreTests {
         let id = store.items[0].id
         #expect(!store.isMissing(id))
 
+        // `isMissing` reads a cache, not a live resolve (a hover-driven re-render shouldn't
+        // trigger one), so breaking the bookmark alone doesn't flip it — a refresh does.
         resolver.breakBookmark(for: url("a.txt"))
+        #expect(!store.isMissing(id))
+        store.refreshMissingStatus()
         #expect(store.isMissing(id))
         #expect(store.url(for: id) == nil)
+    }
+
+    @Test func urlThatCannotBeResolvedButUrlForRefreshesTheCacheAnyway() {
+        let resolver = FakeBookmarkResolver()
+        let store = makeStore(resolver: resolver)
+        store.add(urls: [url("a.txt")])
+        let id = store.items[0].id
+
+        resolver.breakBookmark(for: url("a.txt"))
+        #expect(store.url(for: id) == nil)
+        #expect(store.isMissing(id))
+    }
+
+    @Test func itemInTheTrashCountsAsMissing() {
+        let resolver = FakeBookmarkResolver()
+        let store = makeStore(resolver: resolver)
+        let trashedURL = URL(fileURLWithPath: "/Users/tester/.Trash/a.txt")
+        store.add(urls: [trashedURL])
+        let id = store.items[0].id
+
+        store.refreshMissingStatus()
+        #expect(store.isMissing(id))
+        #expect(store.url(for: id) == nil)
+    }
+
+    @Test func urlThatCannotBeBookmarkedIsSkipped() {
+        let resolver = FakeBookmarkResolver()
+        resolver.failToBookmark = true
+        let store = makeStore(resolver: resolver)
+
+        let added = store.add(urls: [url("a.txt")])
+
+        #expect(added == 0)
+        #expect(store.items.isEmpty)
+    }
+
+    @Test func withinOneDropOrderIsPreserved() {
+        let store = makeStore()
+        store.add(urls: [url("a.txt"), url("b.txt"), url("c.txt")])
+        #expect(store.items.map(\.displayName) == ["a.txt", "b.txt", "c.txt"])
+    }
+
+    @Test func newestDropStillComesBeforeOlderDrops() {
+        let store = makeStore()
+        store.add(urls: [url("a.txt"), url("b.txt")])
+        store.add(urls: [url("c.txt"), url("d.txt")])
+        #expect(store.items.map(\.displayName) == ["c.txt", "d.txt", "a.txt", "b.txt"])
     }
 
     @Test func staleBookmarkIsRefreshedAndSaved() {

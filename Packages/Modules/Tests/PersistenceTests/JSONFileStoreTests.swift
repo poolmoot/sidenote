@@ -70,4 +70,20 @@ final class JSONFileStoreTests {
         store.flush()
         #expect(FileManager.default.fileExists(atPath: fileURL.path))
     }
+
+    /// Every other test drives the write through `flush()`. This one lets the debounce actually
+    /// fire on its own background queue, so the async write path itself is exercised, not just
+    /// the synchronous flush path.
+    @Test func debouncedWriteFiresOnceOnItsOwnAfterTheInterval() async throws {
+        let store = makeStore(debounce: .milliseconds(20))
+        store.save(Fixture(name: "first", count: 1))
+        store.save(Fixture(name: "second", count: 2))
+        store.save(Fixture(name: "third", count: 3))
+
+        try await Task.sleep(for: .milliseconds(200))
+
+        let data = try Data(contentsOf: fileURL)
+        let decoded = try JSONDecoder().decode(Fixture.self, from: data)
+        #expect(decoded == Fixture(name: "third", count: 3))
+    }
 }

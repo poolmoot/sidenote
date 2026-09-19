@@ -9,20 +9,20 @@ import Observation
 /// it is released automatically when the expanded shelf is torn down on fold (spec §3.3, §7).
 @MainActor
 @Observable
-public final class ThumbnailLoader {
+final class ThumbnailLoader {
     private var cache: [ShelfItem.ID: NSImage] = [:]
     private var inFlight: Set<ShelfItem.ID> = []
 
-    public init() {}
+    init() {}
 
     /// The cached thumbnail for `id`, if one has finished loading.
-    public func thumbnail(for id: ShelfItem.ID) -> NSImage? {
+    func thumbnail(for id: ShelfItem.ID) -> NSImage? {
         cache[id]
     }
 
     /// Kicks off generation for `id` if it isn't cached or already loading. Safe to call every
     /// time a cell appears.
-    public func load(id: ShelfItem.ID, url: URL, pointSize: CGFloat = 64, scale: CGFloat = 2) {
+    func load(id: ShelfItem.ID, url: URL, pointSize: CGFloat = 64, scale: CGFloat = 2) {
         guard cache[id] == nil, !inFlight.contains(id) else { return }
         inFlight.insert(id)
         // Generation happens asynchronously and may read the file at any point before the
