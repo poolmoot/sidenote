@@ -12,8 +12,8 @@ struct NotesView: View {
 
     var body: some View {
         Group {
-            if let openNoteID, let note = store.notes.first(where: { $0.id == openNoteID }) {
-                NoteEditorView(note: note, store: store, context: context, onBack: { self.openNoteID = nil })
+            if let openNoteID, store.notes.contains(where: { $0.id == openNoteID }) {
+                NoteEditorView(noteID: openNoteID, store: store, context: context, onBack: { self.openNoteID = nil })
             } else {
                 listContent
             }
@@ -37,10 +37,13 @@ struct NotesView: View {
         }
         // ⌘Z needs a responder somewhere in the tree even though nothing is focused while
         // browsing the list; a zero-opacity button carrying the shortcut is simpler than an
-        // NSEvent monitor and doesn't intercept anything else.
+        // NSEvent monitor and doesn't intercept anything else. Disabled (rather than always live)
+        // so `canUndo` is the actual gate on whether ⌘Z does anything, not just `undoDelete()`'s
+        // own no-op guard.
         .background(
             Button("Undo", action: store.undoDelete)
                 .keyboardShortcut("z", modifiers: .command)
+                .disabled(!store.canUndo)
                 .opacity(0)
                 .allowsHitTesting(false)
         )

@@ -1,133 +1,138 @@
 import SwiftUI
-import Foundation
 import NotchWidgetAPI
 import DesignSystem
 
-/// A single note's editor: a raw `TextEditor` for typing, and a rendered preview below it where
-/// checklist lines (`- [ ]` / `- [x]`) are tickable and URLs are clickable (spec §3.4).
+/// One checklist line worth of derived display state, cached in `NoteEditorView` so parsing runs
+/// only when the text actually changes, not on every `body` evaluation. `lineIndex` is what
+/// `NotesStore.toggleCheckbox(id:lineIndex:)` needs to flip the right line.
+private struct ChecklistRow: Identifiable {
+    var id: Int { lineIndex }
+    let lineIndex: Int
+    let done: Bool
+    let text: String
+}
+
+/// A single note's editor: the `TextEditor` is the *only* place the note's text is shown or typed
+/// — there is no second copy of it — plus, below it, a small checklist of just this note's
+/// tickable lines (`- [ ]` / `- [x]`). Plain text isn't duplicated there; that would mean showing
+/// the whole note twice. Spec §3.4. Clickable links are deferred past M3.
+///
+/// The `TextEditor` binds straight through `NotesStore.text(for:)` / `update(id:text:)` — the
+/// store is the single source of truth, so a checkbox toggle (which edits the store directly)
+/// and an in-flight keystroke can never diverge the way they would with a view-owned `@State`
+/// copy of the text.
 ///
 /// Typing engages the widget's editing lock (`WidgetContext.setEditing`) so the notch doesn't fold
 /// mid-keystroke when the app loses key status (see M1's review notes); leaving the editor — the
-/// back chevron, or the notch folding — disengages it and flushes any pending write immediately.
+/// back row, or the notch folding — disengages it, deletes the note if it's still empty (so `+`
+/// doesn't fill the list with untouched "New note" rows), and flushes any pending write.
 struct NoteEditorView: View {
-    let note: Note
+    let noteID: UUID
     let store: NotesStore
     let context: WidgetContext
     let onBack: () -> Void
 
-    @State private var text: String
     @FocusState private var isEditorFocused: Bool
+    /// Recomputed in `onAppear`/`onChange`, never inside `body` — parsing every line on every
+    /// keystroke was measurable cost for no benefit, since only the checkbox lines are ever shown.
+    @State private var checklistRows: [ChecklistRow] = []
 
-    init(note: Note, store: NotesStore, context: WidgetContext, onBack: @escaping () -> Void) {
-        self.note = note
-        self.store = store
-        self.context = context
-        self.onBack = onBack
-        _text = State(initialValue: note.text)
+    private var textBinding: Binding<String> {
+        Binding(
+            get: { store.text(for: noteID) },
+            set: { store.update(id: noteID, text: $0) }
+        )
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             header
-            TextEditor(text: $text)
+            TextEditor(text: textBinding)
                 .font(.body)
                 .scrollContentBackground(.hidden)
                 .foregroundStyle(Palette.primaryText)
                 .frame(minHeight: 90, maxHeight: 140)
                 .focused($isEditorFocused)
-            Divider()
-            preview
+            if !checklistRows.isEmpty {
+                Divider()
+                checklist
+            }
         }
-        .onAppear { isEditorFocused = true }
-        // Autosave (spec §3.4): every change bumps `updatedAt` and hands the store the new text;
-        // `JSONFileStore` itself debounces the actual disk write ~0.5s after the last keystroke.
-        .onChange(of: text) { _, newValue in
-            store.update(id: note.id, text: newValue)
+        .onAppear {
+            isEditorFocused = true
+            recomputeChecklistRows(from: store.text(for: noteID))
+        }
+        .onChange(of: store.text(for: noteID)) { _, newText in
+            recomputeChecklistRows(from: newText)
         }
         .onChange(of: isEditorFocused) { _, focused in
             context.setEditing(focused)
         }
+        .onDisappear {
+            context.setEditing(false)
+            if store.text(for: noteID).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                store.delete(id: noteID)
+            }
+            store.flush()
+        }
     }
 
+    /// A labelled row, not a bare chevron: the widget header above the list already shows a plain
+    /// chevron-less `+`, but a bare "‹" here would sit directly under nothing to distinguish it
+    /// from any other back control — spelling out the destination makes the two unmistakable.
     private var header: some View {
-        HStack {
-            Button(action: goBack) {
+        Button(action: onBack) {
+            HStack(spacing: 4) {
                 Image(systemName: "chevron.left")
+                Text("All notes")
+            }
+        }
+        .buttonStyle(.plain)
+        .focusEffectDisabled()
+        .font(.caption.bold())
+        .foregroundStyle(Palette.primaryText)
+        .accessibilityLabel("Back to all notes")
+    }
+
+    private var checklist: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Checklist")
+                .font(.caption2.bold())
+                .foregroundStyle(Palette.secondaryText)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(checklistRows) { row in
+                        checklistRowView(row)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+
+    private func checklistRowView(_ row: ChecklistRow) -> some View {
+        HStack(alignment: .top, spacing: 6) {
+            Button {
+                store.toggleCheckbox(id: noteID, lineIndex: row.lineIndex)
+            } label: {
+                Image(systemName: row.done ? "checkmark.square.fill" : "square")
+                    .foregroundStyle(row.done ? Color.accentColor : Palette.secondaryText)
             }
             .buttonStyle(.plain)
             .focusEffectDisabled()
-            .foregroundStyle(Palette.primaryText)
-            .accessibilityLabel("Back to notes")
-            Spacer()
+            .padding(4)
+            .contentShape(Rectangle())
+
+            Text(row.text)
+                .strikethrough(row.done)
+                .foregroundStyle(row.done ? Palette.secondaryText : Palette.primaryText)
         }
     }
 
-    private var preview: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 4) {
-                ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
-                    lineView(for: line, at: index)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+    private func recomputeChecklistRows(from text: String) {
+        checklistRows = splitIntoLines(text).enumerated().compactMap { lineIndex, line in
+            guard case .checkbox(_, let done, let lineText) = ChecklistLine.parse(line) else { return nil }
+            return ChecklistRow(lineIndex: lineIndex, done: done, text: lineText)
         }
-    }
-
-    private var lines: [Substring] {
-        text.split(separator: "\n", omittingEmptySubsequences: false)
-    }
-
-    @ViewBuilder
-    private func lineView(for line: Substring, at index: Int) -> some View {
-        switch ChecklistLine.parse(line) {
-        case .checkbox(_, let done, let checkboxText):
-            HStack(alignment: .top, spacing: 6) {
-                Button {
-                    store.toggleCheckbox(id: note.id, lineIndex: index)
-                } label: {
-                    Image(systemName: done ? "checkmark.square.fill" : "square")
-                        .foregroundStyle(done ? Color.accentColor : Palette.secondaryText)
-                }
-                .buttonStyle(.plain)
-                .focusEffectDisabled()
-
-                linkText(checkboxText)
-                    .strikethrough(done)
-                    .foregroundStyle(done ? Palette.secondaryText : Palette.primaryText)
-            }
-        case .plain(let plainText):
-            if !plainText.isEmpty {
-                linkText(plainText)
-                    .foregroundStyle(Palette.primaryText)
-            }
-        }
-    }
-
-    /// `string` rendered with any URLs autodetected and marked as `.link`, so `Text` makes them
-    /// clickable (SwiftUI opens a `.link` attribute in the default browser on its own — spec §3.4).
-    private func linkText(_ string: String) -> Text {
-        Text(Self.attributedString(for: string))
-    }
-
-    private static let linkDetector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
-
-    private static func attributedString(for string: String) -> AttributedString {
-        var attributed = AttributedString(string)
-        guard let detector = linkDetector else { return attributed }
-        let fullRange = NSRange(string.startIndex..<string.endIndex, in: string)
-        for match in detector.matches(in: string, range: fullRange) {
-            guard let url = match.url,
-                  let stringRange = Range(match.range, in: string),
-                  let attributedRange = Range(stringRange, in: attributed) else { continue }
-            attributed[attributedRange].link = url
-            attributed[attributedRange].underlineStyle = .single
-        }
-        return attributed
-    }
-
-    private func goBack() {
-        context.setEditing(false)
-        store.flush()
-        onBack()
     }
 }
