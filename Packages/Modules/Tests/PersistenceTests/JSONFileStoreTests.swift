@@ -52,6 +52,28 @@ final class JSONFileStoreTests {
         #expect(!FileManager.default.fileExists(atPath: fileURL.path))
     }
 
+    @Test func loadAcceptsAValueThatPassesIsValid() {
+        let store = makeStore()
+        store.save(Fixture(name: "shelf", count: 3))
+        store.flush()
+
+        let reloaded = makeStore().load(isValid: { $0.count == 3 })
+        #expect(reloaded == Fixture(name: "shelf", count: 3))
+    }
+
+    @Test func loadQuarantinesAValueThatFailsIsValid() throws {
+        let store = makeStore()
+        store.save(Fixture(name: "shelf", count: 3))
+        store.flush()
+
+        let loaded = makeStore().load(isValid: { $0.count == 99 })
+        #expect(loaded == nil)
+
+        let siblings = try FileManager.default.contentsOfDirectory(atPath: directory.path)
+        #expect(siblings.contains { $0.hasPrefix("fixture.corrupt-") && $0.hasSuffix(".json") })
+        #expect(!FileManager.default.fileExists(atPath: fileURL.path))
+    }
+
     @Test func severalSavesFollowedByFlushWriteOnlyTheLastValue() {
         let store = makeStore(debounce: .seconds(30))
         store.save(Fixture(name: "first", count: 1))

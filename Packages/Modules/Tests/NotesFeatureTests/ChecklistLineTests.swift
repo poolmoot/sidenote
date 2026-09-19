@@ -21,6 +21,10 @@ struct ChecklistLineTests {
         #expect(ChecklistLine.parse("  - [ ] nested") == .checkbox(indent: "  ", done: false, text: "nested"))
     }
 
+    @Test func tabIndentationBeforeTheHyphenIsPreserved() {
+        #expect(ChecklistLine.parse("\t- [ ] nested") == .checkbox(indent: "\t", done: false, text: "nested"))
+    }
+
     @Test func hyphenWithoutASpaceBeforeTheBracketIsPlainText() {
         let line = "-[ ] not a checkbox"
         #expect(ChecklistLine.parse(line) == .plain(line))
@@ -39,29 +43,52 @@ struct ChecklistLineTests {
         #expect(ChecklistLine.parse("") == .plain(""))
     }
 
-    @Test func toggleFlipsOnlyTheMarker() {
-        let parsed = ChecklistLine.parse("- [ ] buy milk")
-        #expect(parsed.toggled == .checkbox(indent: "", done: true, text: "buy milk"))
-        #expect(parsed.toggled.rendered == "- [x] buy milk")
+    @Test func aTrailingCarriageReturnFromACRLFLineStaysPartOfTheText() {
+        #expect(ChecklistLine.parse("- [ ] buy milk\r") == .checkbox(indent: "", done: false, text: "buy milk\r"))
     }
 
-    @Test func togglingTwiceReturnsToTheOriginal() {
-        let parsed = ChecklistLine.parse("- [x] buy milk")
-        #expect(parsed.toggled.toggled == parsed)
+    // MARK: togglingMarker
+
+    @Test func togglingMarkerFlipsUncheckedToChecked() {
+        #expect(ChecklistLine.togglingMarker(in: "- [ ] buy milk") == "- [x] buy milk")
     }
 
-    @Test func toggleOnAPlainLineIsANoOp() {
-        let parsed = ChecklistLine.parse("just a note")
-        #expect(parsed.toggled == parsed)
+    @Test func togglingMarkerFlipsCheckedToUnchecked() {
+        #expect(ChecklistLine.togglingMarker(in: "- [x] buy milk") == "- [ ] buy milk")
     }
 
-    @Test func renderingRoundTripsTheOriginalLine() {
-        let original = "  - [x] done thing"
-        #expect(ChecklistLine.parse(original).rendered == original)
+    @Test func togglingMarkerFlipsUppercaseCheckedToUnchecked() {
+        #expect(ChecklistLine.togglingMarker(in: "- [X] buy milk") == "- [ ] buy milk")
     }
 
-    @Test func renderingAnEmptyCheckboxRoundTrips() {
-        let original = "- [ ]"
-        #expect(ChecklistLine.parse(original).rendered == original)
+    @Test func togglingMarkerTwiceReturnsToTheOriginal() {
+        let original: Substring = "- [ ] buy milk"
+        #expect(ChecklistLine.togglingMarker(in: ChecklistLine.togglingMarker(in: original)) == original)
+    }
+
+    @Test func togglingMarkerOnAPlainLineIsANoOp() {
+        #expect(ChecklistLine.togglingMarker(in: "just a note") == "just a note")
+    }
+
+    @Test func togglingMarkerOnAHyphenWithoutASpaceIsANoOp() {
+        #expect(ChecklistLine.togglingMarker(in: "-[ ] not a checkbox") == "-[ ] not a checkbox")
+    }
+
+    /// The specific edge case a parse-then-rebuild toggle didn't round-trip: a trailing space with
+    /// no text after the marker. Flipping the marker character in place can't lose it.
+    @Test func togglingMarkerPreservesATrailingSpaceWithEmptyText() {
+        #expect(ChecklistLine.togglingMarker(in: "- [ ] ") == "- [x] ")
+    }
+
+    @Test func togglingMarkerPreservesIndentAndExtraSpacesInText() {
+        #expect(ChecklistLine.togglingMarker(in: "  - [ ]  two spaces before text") == "  - [x]  two spaces before text")
+    }
+
+    @Test func togglingMarkerPreservesATrailingCarriageReturn() {
+        #expect(ChecklistLine.togglingMarker(in: "- [ ] buy milk\r") == "- [x] buy milk\r")
+    }
+
+    @Test func togglingMarkerPreservesEmojiAndMultiByteText() {
+        #expect(ChecklistLine.togglingMarker(in: "- [ ] 買い物 🛒") == "- [x] 買い物 🛒")
     }
 }

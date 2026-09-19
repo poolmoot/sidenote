@@ -17,24 +17,30 @@ public struct Note: Codable, Identifiable, Equatable, Sendable {
 
 public extension Note {
     /// The first non-empty line, trimmed, or "New note" for a note with no text yet. Spec §3.4.
-    var title: String {
-        nonEmptyLines.first ?? "New note"
-    }
+    var title: String { titleAndPreview.title }
 
     /// The next non-empty line after the title, for the list row's subtitle — `nil` when there
     /// isn't one (a one-line note, or an empty note).
-    var preview: String? {
-        let lines = nonEmptyLines
-        return lines.count > 1 ? lines[1] : nil
-    }
+    var preview: String? { titleAndPreview.preview }
 
-    /// Every line with content, trimmed of surrounding whitespace, blank lines dropped. Title and
-    /// preview both skip blank lines rather than treating "line 1" and "line 2" literally, so a
-    /// note that starts with a couple of blank lines still shows a sensible title.
-    private var nonEmptyLines: [String] {
-        text.split(separator: "\n", omittingEmptySubsequences: false)
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
+    /// Title and preview computed together in a single pass over `text`'s lines, stopping as soon
+    /// as both are found — a list row needs both, and neither one should cost scanning the whole
+    /// note (a large note shouldn't make every row redraw slower). `.whitespacesAndNewlines`
+    /// (rather than just `.whitespaces`) trims a stray trailing "\r" from a CRLF-authored line.
+    private var titleAndPreview: (title: String, preview: String?) {
+        var title: String?
+        var preview: String?
+        for line in splitIntoLines(text) {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { continue }
+            if title == nil {
+                title = trimmed
+            } else {
+                preview = trimmed
+                break
+            }
+        }
+        return (title ?? "New note", preview)
     }
 }
 

@@ -57,13 +57,21 @@ public final class JSONFileStore<Value: Codable> {
         self.decoder = JSONDecoder()
     }
 
-    /// The persisted value, or `nil` if there is none yet, or the file couldn't be decoded (it is
-    /// quarantined in that case).
-    public func load() -> Value? {
+    /// The persisted value, or `nil` if there is none yet, the file couldn't be decoded, or it
+    /// decoded fine but failed `isValid` (e.g. a schema `version` this build doesn't understand).
+    /// Either failure quarantines the file rather than handing back data a caller doesn't expect —
+    /// silently accepting an unrecognized future version is how a downgrade corrupts a document.
+    public func load(isValid: (Value) -> Bool = { _ in true }) -> Value? {
         guard fileManager.fileExists(atPath: url.path) else { return nil }
         do {
             let data = try Data(contentsOf: url)
-            return try decoder.decode(Value.self, from: data)
+            let decoded = try decoder.decode(Value.self, from: data)
+            guard isValid(decoded) else {
+                logger.error("Rejecting \(self.url.lastPathComponent, privacy: .public): failed validation.")
+                quarantine()
+                return nil
+            }
+            return decoded
         } catch {
             logger.error("Failed to decode \(self.url.lastPathComponent, privacy: .public): \(String(describing: error), privacy: .public)")
             quarantine()

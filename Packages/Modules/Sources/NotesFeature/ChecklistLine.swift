@@ -13,7 +13,9 @@ public enum ChecklistLine: Equatable, Sendable {
     case checkbox(indent: String, done: Bool, text: String)
     case plain(String)
 
-    /// Parses a single line (no trailing newline).
+    /// Parses a single line (no trailing newline — a CRLF-origin line keeps its trailing "\r" as
+    /// the last character of `text` or of the plain line; that's intentional, see
+    /// `splitIntoLines`).
     public static func parse<S: StringProtocol>(_ line: S) -> ChecklistLine {
         let characters = Array(line)
         var index = characters.startIndex
@@ -49,28 +51,21 @@ public enum ChecklistLine: Equatable, Sendable {
         }
         return .checkbox(indent: indent, done: done, text: text)
     }
-}
 
-public extension ChecklistLine {
-    /// The line's marker flipped; a no-op on plain text.
-    var toggled: ChecklistLine {
-        switch self {
-        case .plain:
-            return self
-        case .checkbox(let indent, let done, let text):
-            return .checkbox(indent: indent, done: !done, text: text)
-        }
-    }
-
-    /// The raw line text this case represents. For a value produced by `parse`, this round-trips
-    /// to the original line exactly.
-    var rendered: String {
-        switch self {
-        case .plain(let text):
-            return text
-        case .checkbox(let indent, let done, let text):
-            let marker = done ? "x" : " "
-            return text.isEmpty ? "\(indent)- [\(marker)]" : "\(indent)- [\(marker)] \(text)"
-        }
+    /// Flips `line`'s marker character **in place** — finds the `[`, replaces the single scalar
+    /// right after it — rather than reconstructing the whole line from `parse`'s output. This is
+    /// the only way to guarantee nothing besides that one character can ever drift: a line like
+    /// `"- [ ] "` (trailing space, empty text) keeps that trailing space exactly, which rebuilding
+    /// the line from `indent`/`done`/`text` doesn't guarantee for every possible input. Returns
+    /// `line` unchanged if it isn't a checkbox line.
+    public static func togglingMarker<S: StringProtocol>(in line: S) -> Substring {
+        guard case .checkbox = parse(line) else { return Substring(line) }
+        var scalars = Substring(line).unicodeScalars
+        guard let bracketIndex = scalars.firstIndex(of: "[") else { return Substring(line) }
+        let markerIndex = scalars.index(after: bracketIndex)
+        guard markerIndex < scalars.endIndex else { return Substring(line) }
+        let newMarker: Unicode.Scalar = scalars[markerIndex] == " " ? "x" : " "
+        scalars.replaceSubrange(markerIndex..<scalars.index(after: markerIndex), with: [newMarker])
+        return Substring(String(scalars))
     }
 }

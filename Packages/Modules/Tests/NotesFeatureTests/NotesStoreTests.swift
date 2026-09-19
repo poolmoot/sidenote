@@ -28,6 +28,20 @@ final class NotesStoreTests {
         #expect(store.notes.first?.id == note.id)
     }
 
+    @Test func textForReturnsTheCurrentTextAndIsTheSourceOfTruth() {
+        let store = makeStore()
+        let note = store.create()
+        #expect(store.text(for: note.id).isEmpty)
+
+        store.update(id: note.id, text: "hello")
+        #expect(store.text(for: note.id) == "hello")
+    }
+
+    @Test func textForAnUnknownIDIsEmpty() {
+        let store = makeStore()
+        #expect(store.text(for: UUID()) == "")
+    }
+
     @Test func updateBumpsUpdatedAtAndReordersToTheTop() {
         let store = makeStore()
         let first = store.create()
@@ -54,6 +68,25 @@ final class NotesStoreTests {
         #expect(store.notes.map(\.id) == [c.id, b.id, a.id])
     }
 
+    @Test func undoDeleteReSortsByUpdatedAtRatherThanJustRestoringTheOldIndex() {
+        let store = makeStore()
+        let a = store.create()
+        let b = store.create()
+        let c = store.create()
+        // newest first at creation: c, b, a
+        store.delete(id: b.id)
+        // now: c, a
+        store.update(id: a.id, text: "a is freshest now")
+        // now: a, c
+
+        store.undoDelete()
+
+        // b's `updatedAt` is still its original (oldest) timestamp, so it belongs at the end —
+        // not back at its pre-delete array index (1), which would wrongly land it in the middle
+        // ahead of `c`.
+        #expect(store.notes.map(\.id) == [a.id, c.id, b.id])
+    }
+
     @Test func undoWithNothingDeletedIsANoOp() {
         let store = makeStore()
         let a = store.create()
@@ -68,6 +101,18 @@ final class NotesStoreTests {
         store.clearUndo()
         store.undoDelete()
         #expect(store.notes.isEmpty)
+    }
+
+    @Test func canUndoReflectsWhetherARestoreIsAvailable() {
+        let store = makeStore()
+        let a = store.create()
+        #expect(!store.canUndo)
+
+        store.delete(id: a.id)
+        #expect(store.canUndo)
+
+        store.undoDelete()
+        #expect(!store.canUndo)
     }
 
     @Test func toggleCheckboxFlipsOnlyThatLine() {
@@ -100,6 +145,48 @@ final class NotesStoreTests {
         #expect(store.notes.first?.text == "one line")
     }
 
+    @Test func toggleCheckboxPreservesTabIndentationAndTheRestOfTheDocument() {
+        let store = makeStore()
+        let note = store.create()
+        let original = "list\n\t- [ ] sub-item\nafter"
+        store.update(id: note.id, text: original)
+
+        store.toggleCheckbox(id: note.id, lineIndex: 1)
+
+        #expect(store.notes.first?.text == "list\n\t- [x] sub-item\nafter")
+    }
+
+    @Test func toggleCheckboxPreservesTrailingWhitespaceInTheLine() {
+        let store = makeStore()
+        let note = store.create()
+        store.update(id: note.id, text: "- [ ] milk   \nafter")
+
+        store.toggleCheckbox(id: note.id, lineIndex: 0)
+
+        #expect(store.notes.first?.text == "- [x] milk   \nafter")
+    }
+
+    @Test func toggleCheckboxPreservesEmojiAndMultiByteText() {
+        let store = makeStore()
+        let note = store.create()
+        store.update(id: note.id, text: "before\n- [ ] 買い物 🛒\nafter")
+
+        store.toggleCheckbox(id: note.id, lineIndex: 1)
+
+        #expect(store.notes.first?.text == "before\n- [x] 買い物 🛒\nafter")
+    }
+
+    @Test func toggleCheckboxOnACRLFDocumentFindsTheRightLineAndIsByteIdenticalElsewhere() {
+        let store = makeStore()
+        let note = store.create()
+        let original = "shopping\r\n- [ ] milk\r\n- [ ] eggs\r\n"
+        store.update(id: note.id, text: original)
+
+        store.toggleCheckbox(id: note.id, lineIndex: 1)
+
+        #expect(store.notes.first?.text == "shopping\r\n- [x] milk\r\n- [ ] eggs\r\n")
+    }
+
     @Test func notesSurviveAReloadThroughJSONFileStore() {
         let fileURL = directory.appendingPathComponent("notes.json")
         let firstFileStore = JSONFileStore<NotesDocument>(url: fileURL)
@@ -111,6 +198,19 @@ final class NotesStoreTests {
         let secondFileStore = JSONFileStore<NotesDocument>(url: fileURL)
         let reloaded = NotesStore(store: secondFileStore)
         #expect(reloaded.notes.map(\.text) == ["remember this"])
+    }
+
+    @Test func aFutureSchemaVersionIsQuarantinedAndStartsEmpty() throws {
+        let fileURL = directory.appendingPathComponent("notes.json")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let future = NotesDocument(version: 2, notes: [Note(text: "from the future")])
+        try JSONEncoder().encode(future).write(to: fileURL)
+
+        let store = NotesStore(store: JSONFileStore<NotesDocument>(url: fileURL))
+
+        #expect(store.notes.isEmpty)
+        let siblings = try FileManager.default.contentsOfDirectory(atPath: directory.path)
+        #expect(siblings.contains { $0.hasPrefix("notes.corrupt-") })
     }
 
     @Test func titleIsTheFirstNonEmptyLineTrimmedWithNextLineAsPreview() {
@@ -135,5 +235,11 @@ final class NotesStoreTests {
         let note = Note(text: "Just one line")
         #expect(note.title == "Just one line")
         #expect(note.preview == nil)
+    }
+
+    @Test func titleAndPreviewTrimAStrayCarriageReturnFromACRLFNote() {
+        let note = Note(text: "Groceries\r\nmilk, eggs\r")
+        #expect(note.title == "Groceries")
+        #expect(note.preview == "milk, eggs")
     }
 }
