@@ -39,7 +39,7 @@ final class NotchPanel: NSPanel {
     /// Intercepted here instead of in a view: `sendEvent` sees every event before hit-testing
     /// does, whereas a SwiftUI subview that swallows the event would never let us react to it.
     override func sendEvent(_ event: NSEvent) {
-        if event.type == .keyDown, event.keyCode == 53 { // Escape
+        if event.type == .keyDown, event.keyCode == 53, !firstResponderIsComposingText { // Escape
             onEscape?()
             return
         }
@@ -80,6 +80,16 @@ final class NotchPanel: NSPanel {
     private func isOverChrome(_ event: NSEvent) -> Bool {
         guard let view = contentView else { return false }
         return view.hitTest(event.locationInWindow) != nil
+    }
+
+    /// Whether the first responder is an `NSTextView` mid-composition with an input method (spec
+    /// §12 risk: typing Japanese/Chinese leaves an uncommitted candidate string marked via
+    /// `hasMarkedText()`). Escape's usual job there is to cancel that composition, not fold the
+    /// notch — intercepting it first would discard the user's in-progress input, so this case is
+    /// let fall through to `super.sendEvent`, which delivers it to the text view as normal.
+    private var firstResponderIsComposingText: Bool {
+        guard let textView = firstResponder as? NSTextView else { return false }
+        return textView.hasMarkedText()
     }
 
     /// Pumps this window's own event queue until the mouse button lifts. This is the standard
