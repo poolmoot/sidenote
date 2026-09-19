@@ -2,9 +2,10 @@ import SwiftUI
 import Observation
 import NotchWidgetAPI
 
-/// Stand-ins for the mini apps that haven't landed yet (Notes M3, Reminders M4). The Shelf
-/// placeholder is gone now that `ShelfWidget` (M2) is real. Each placeholder has a text field
-/// that engages the editing lock, so that plumbing keeps getting exercised.
+/// Stand-ins for the mini apps that haven't landed yet (Reminders M4). The Shelf and Notes
+/// placeholders are gone now that `ShelfWidget` (M2) and `NotesWidget` (M3) are real. Each
+/// placeholder has a text field that engages the editing lock, so that plumbing keeps getting
+/// exercised.
 @MainActor
 @Observable
 final class PlaceholderWidget: NotchWidget {
@@ -26,7 +27,6 @@ final class PlaceholderWidget: NotchWidget {
 
     static func all() -> [PlaceholderWidget] {
         [
-            PlaceholderWidget(id: .notes, title: "Notes", systemImage: "note.text", milestone: "M3"),
             PlaceholderWidget(id: .reminders, title: "Reminders", systemImage: "bell", milestone: "M4"),
         ]
     }

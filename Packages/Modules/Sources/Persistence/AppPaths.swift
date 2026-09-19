@@ -30,4 +30,13 @@ public enum AppPaths {
         try applicationSupportDirectory(fileManager: fileManager, identity: identity)
             .appendingPathComponent("shelf.json")
     }
+
+    /// The URL of `notes.json`, inside `applicationSupportDirectory`.
+    public static func notesFile(
+        fileManager: FileManager = .default,
+        identity: AppIdentity = .current
+    ) throws -> URL {
+        try applicationSupportDirectory(fileManager: fileManager, identity: identity)
+            .appendingPathComponent("notes.json")
+    }
 }
