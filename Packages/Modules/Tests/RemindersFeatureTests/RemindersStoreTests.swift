@@ -186,14 +186,15 @@ final class RemindersStoreTests {
 
     // MARK: snooze
 
+    /// Snoozing an overdue reminder — the normal case — measures from now.
     @Test func snoozeMovesTheDateAndReschedules() {
         let (store, scheduler) = makeStore()
-        let reminder = store.add(text: "buy milk", fireDate: fixedNow.addingTimeInterval(300))
-        #expect(scheduler.scheduleCallCount == 1)
+        let reminder = store.add(text: "buy milk", fireDate: fixedNow.addingTimeInterval(-300))
+        #expect(scheduler.scheduleCallCount == 0)   // already overdue: nothing to schedule
 
         store.snooze(id: reminder.id)
 
-        #expect(scheduler.scheduleCallCount == 2)
+        #expect(scheduler.scheduleCallCount == 1)
         let expectedFireDate = fixedNow.addingTimeInterval(10 * 60)
         #expect(store.reminders.first(where: { $0.id == reminder.id })?.fireDate == expectedFireDate)
         #expect(scheduler.scheduled[reminder.id]?.fireDate == expectedFireDate)
@@ -203,7 +204,7 @@ final class RemindersStoreTests {
         let scheduler = FakeScheduler()
         let fileStore = JSONFileStore<RemindersDocument>(url: directory.appendingPathComponent("reminders.json"))
         let store = RemindersStore(store: fileStore, scheduler: scheduler, now: { self.fixedNow }, calendar: calendar, snoozeInterval: 60)
-        let reminder = store.add(text: "buy milk", fireDate: fixedNow.addingTimeInterval(300))
+        let reminder = store.add(text: "buy milk", fireDate: fixedNow.addingTimeInterval(-300))
 
         store.snooze(id: reminder.id)
 
@@ -423,5 +424,26 @@ final class RemindersStoreTests {
         let quarantined = try FileManager.default.contentsOfDirectory(atPath: directory.path)
             .contains { $0.hasPrefix("reminders.corrupt-") }
         #expect(quarantined)
+    }
+}
+
+@MainActor
+struct SnoozingAnUpcomingReminderTests {
+    @Test func snoozingSomethingNotYetDuePushesItLaterNotCloser() throws {
+        let clock = Date(timeIntervalSince1970: 1_700_000_000)
+        let directory = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let store = RemindersStore(
+            store: JSONFileStore<RemindersDocument>(url: directory.appendingPathComponent("reminders.json")),
+            scheduler: FakeScheduler(),
+            now: { clock }
+        )
+        let eightHoursAway = clock.addingTimeInterval(8 * 3600)
+        store.add(text: "dentist", fireDate: eightHoursAway)
+
+        store.snooze(id: store.reminders[0].id)
+
+        // 8 h + the snooze length, never "10 minutes from now".
+        #expect(store.reminders[0].fireDate == eightHoursAway.addingTimeInterval(10 * 60))
     }
 }

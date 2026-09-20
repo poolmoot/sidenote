@@ -130,7 +130,10 @@ public final class RemindersStore {
     /// isn't a pending reminder.
     public func snooze(id: UUID) {
         guard let index = reminders.firstIndex(where: { $0.id == id }), reminders[index].status == .pending else { return }
-        reminders[index].fireDate = now().addingTimeInterval(snoozeInterval)
+        // From whichever is later: snoozing a reminder that hasn't fired yet must never pull it
+        // closer (tapping Snooze on something due in eight hours used to make it ten minutes).
+        let base = max(now(), reminders[index].fireDate)
+        reminders[index].fireDate = base.addingTimeInterval(snoozeInterval)
         scheduler.schedule(reminders[index])
         persist()
         recompute()

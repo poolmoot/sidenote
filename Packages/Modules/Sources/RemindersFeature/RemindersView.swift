@@ -20,6 +20,14 @@ struct RemindersView: View {
     /// "expensive/non-deterministic work inside `body`" this codebase avoids elsewhere.
     @State private var timelineAnchor = Date()
 
+    /// One second while the soonest reminder is inside the seconds-countdown window, a minute
+    /// otherwise. Reading `store.upcoming.first` is a single array access, not a scan.
+    private var tickInterval: TimeInterval {
+        guard let soonest = store.upcoming.first else { return 60 }
+        let remaining = soonest.fireDate.timeIntervalSince(Date())
+        return remaining > 0 && remaining < CountdownLabel.secondsThreshold ? 1 : 60
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             header
@@ -174,7 +182,10 @@ struct RemindersView: View {
                 // screen — folding the widget tears the whole tree down, and with it this
                 // `TimelineView`, so nothing ticks while the notch is folded (spec §3.5).
                 ScrollView {
-                    TimelineView(.periodic(from: timelineAnchor, by: 60)) { timeline in
+                    // A second-by-second tick only while a countdown is actually showing seconds;
+                    // otherwise once a minute. Either way it lives inside the open widget, so the
+                    // folded notch still ticks at nothing.
+                    TimelineView(.periodic(from: timelineAnchor, by: tickInterval)) { timeline in
                         LazyVStack(alignment: .leading, spacing: 2) {
                             if !store.overdue.isEmpty {
                                 sectionLabel("Overdue", color: .red)
@@ -242,11 +253,13 @@ private struct ReminderRow: View {
                 .focusEffectDisabled()
                 .font(.caption.bold())
                 .foregroundStyle(Palette.primaryText)
-            Button("Snooze") { store.snooze(id: reminder.id) }
-                .buttonStyle(.plain)
-                .focusEffectDisabled()
-                .font(.caption)
-                .foregroundStyle(Palette.secondaryText)
+            if isOverdue {
+                Button("Snooze") { store.snooze(id: reminder.id) }
+                    .buttonStyle(.plain)
+                    .focusEffectDisabled()
+                    .font(.caption)
+                    .foregroundStyle(Palette.secondaryText)
+            }
         }
         .padding(6)
         .contentShape(Rectangle())
@@ -256,20 +269,6 @@ private struct ReminderRow: View {
     /// passed. Display-only formatting, hand-checked like the rest of this view rather than
     /// unit-tested.
     private var relativeLabel: String {
-        // Against the timeline's tick, not a fresh Date(): the tick can sit a moment behind the
-        // reminder's creation, and rounding that up turned a 5-minute reminder into "in 6 min".
-        // Nearest-minute rounding says 5 either side of the boundary.
-        let secondsRemaining = reminder.fireDate.timeIntervalSince(now)
-        guard secondsRemaining > 0 else { return "overdue" }
-        guard secondsRemaining >= 30 else { return "in under a minute" }
-        let minutes = Int((secondsRemaining / 60).rounded())
-        if minutes < 60 { return "in \(minutes) min" }
-        let hours = minutes / 60
-        if hours < 24 {
-            let remainderMinutes = minutes % 60
-            return remainderMinutes == 0 ? "in \(hours) h" : "in \(hours) h \(remainderMinutes) min"
-        }
-        let days = hours / 24
-        return "in \(days) d"
+        CountdownLabel.text(forSecondsRemaining: reminder.fireDate.timeIntervalSince(now))
     }
 }
