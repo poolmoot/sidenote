@@ -59,4 +59,6 @@ targets:
         product: ShelfFeature
       - package: Modules
         product: NotesFeature
+      - package: Modules
+        product: RemindersFeature
     scheme: {}

@@ -39,4 +39,13 @@ public enum AppPaths {
         try applicationSupportDirectory(fileManager: fileManager, identity: identity)
             .appendingPathComponent("notes.json")
     }
+
+    /// The URL of `reminders.json`, inside `applicationSupportDirectory`.
+    public static func remindersFile(
+        fileManager: FileManager = .default,
+        identity: AppIdentity = .current
+    ) throws -> URL {
+        try applicationSupportDirectory(fileManager: fileManager, identity: identity)
+            .appendingPathComponent("reminders.json")
+    }
 }
