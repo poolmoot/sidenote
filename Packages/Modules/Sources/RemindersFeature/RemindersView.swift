@@ -256,9 +256,13 @@ private struct ReminderRow: View {
     /// passed. Display-only formatting, hand-checked like the rest of this view rather than
     /// unit-tested.
     private var relativeLabel: String {
+        // Against the timeline's tick, not a fresh Date(): the tick can sit a moment behind the
+        // reminder's creation, and rounding that up turned a 5-minute reminder into "in 6 min".
+        // Nearest-minute rounding says 5 either side of the boundary.
         let secondsRemaining = reminder.fireDate.timeIntervalSince(now)
         guard secondsRemaining > 0 else { return "overdue" }
-        let minutes = Int((secondsRemaining / 60).rounded(.up))
+        guard secondsRemaining >= 30 else { return "in under a minute" }
+        let minutes = Int((secondsRemaining / 60).rounded())
         if minutes < 60 { return "in \(minutes) min" }
         let hours = minutes / 60
         if hours < 24 {

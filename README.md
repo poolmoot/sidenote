@@ -32,6 +32,11 @@ in Xcode if you like, but make project changes in `project.yml`.
 | `Scripts` | Tooling |
 | `docs/superpowers` | Design spec and implementation plans |
 
-## Design
+## Documentation
 
-See [the design spec](docs/superpowers/specs/2026-09-19-sidenotch-design.md).
+| Read this | For |
+|---|---|
+| [Architecture](docs/architecture.md) | How it fits together and the rules that keep it light |
+| [Adding a widget](docs/adding-a-widget.md) | Building, or removing, a mini app in the notch |
+| [Working on this repo](AGENTS.md) | Commands, non-negotiables, house style |
+| [Design spec](docs/superpowers/specs/2026-09-19-sidenotch-design.md) | What the app is meant to do, milestone by milestone |

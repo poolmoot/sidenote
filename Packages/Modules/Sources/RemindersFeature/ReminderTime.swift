@@ -60,9 +60,7 @@ public extension ReminderTime {
     /// opens a date picker rather than resolving to a fixed `ReminderTime` on tap.
     static let presetChips: [TimeChip] = [
         TimeChip(id: "5min", label: "5 min", time: .inMinutes(5)),
-        TimeChip(id: "15min", label: "15 min", time: .inMinutes(15)),
         TimeChip(id: "30min", label: "30 min", time: .inMinutes(30)),
-        TimeChip(id: "1h", label: "1 h", time: .inMinutes(60)),
         TimeChip(id: "tonight", label: "Tonight", time: .tonight()),
         TimeChip(id: "tomorrow", label: "Tomorrow", time: .tomorrow()),
     ]
