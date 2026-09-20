@@ -14,6 +14,11 @@ struct RemindersView: View {
     @State private var isCustomPickerShowing = false
     @State private var customDate = Date()
     @FocusState private var isTextFieldFocused: Bool
+    /// Fixed once, when the view appears, rather than read as `.now` inside `body`: a literal
+    /// `.now` there would be a new `Date` on every redraw, which is harmless for `TimelineView`
+    /// itself (it only uses `from:` as the schedule's starting point) but is exactly the kind of
+    /// "expensive/non-deterministic work inside `body`" this codebase avoids elsewhere.
+    @State private var timelineAnchor = Date()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -25,7 +30,8 @@ struct RemindersView: View {
             Divider()
             list
         }
-        .onChange(of: isTextFieldFocused) { _, focused in context.setEditing(focused) }
+        .onChange(of: isTextFieldFocused) { _, _ in updateEditingLock() }
+        .onChange(of: isCustomPickerShowing) { _, _ in updateEditingLock() }
         // ⌘Z needs a responder somewhere in the tree even while nothing is focused; a
         // zero-opacity button carrying the shortcut is simpler than an NSEvent monitor and
         // doesn't intercept anything else. Disabled (rather than always live) so `canUndoLastDone`
@@ -37,12 +43,25 @@ struct RemindersView: View {
                 .opacity(0)
                 .allowsHitTesting(false)
         )
+        .onAppear {
+            // Picks up a permission change made outside the app (e.g. the user granted or
+            // revoked notifications in System Settings since this widget was last open), not
+            // just a denial found at launch.
+            Task { await store.reconcile() }
+        }
         // Spec §3.5: undo doesn't reach back past the last time the widget was open.
         .onDisappear {
             context.setEditing(false)
             store.clearUndo()
             store.flush()
         }
+    }
+
+    /// The editing lock is held while either the text field has focus or the custom date picker
+    /// is up — a `DatePicker` doesn't report through `@FocusState` the way a text field does, so
+    /// "is the custom picker showing" stands in for "is the user mid-pick", same lock either way.
+    private func updateEditingLock() {
+        context.setEditing(isTextFieldFocused || isCustomPickerShowing)
     }
 
     private var header: some View {
@@ -66,7 +85,9 @@ struct RemindersView: View {
                 .background(Palette.tileFill, in: RoundedRectangle(cornerRadius: 6))
                 .foregroundStyle(Palette.primaryText)
                 .focused($isTextFieldFocused)
-                .onSubmit { addReminder(time: .inMinutes(5)) }
+                // Owner ruling: Return must not silently create a reminder on some implicit
+                // default chip — the user picks a time explicitly, always.
+                .onSubmit {}
 
             chipRow
 
@@ -153,7 +174,7 @@ struct RemindersView: View {
                 // screen — folding the widget tears the whole tree down, and with it this
                 // `TimelineView`, so nothing ticks while the notch is folded (spec §3.5).
                 ScrollView {
-                    TimelineView(.periodic(from: .now, by: 60)) { timeline in
+                    TimelineView(.periodic(from: timelineAnchor, by: 60)) { timeline in
                         LazyVStack(alignment: .leading, spacing: 2) {
                             if !store.overdue.isEmpty {
                                 sectionLabel("Overdue", color: .red)

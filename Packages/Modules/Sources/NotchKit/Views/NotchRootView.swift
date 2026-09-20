@@ -25,6 +25,19 @@ struct NotchRootView: View {
                 .frame(width: model.shapeRect.width, height: model.shapeRect.height)
                 .offset(x: model.shapeRect.minX, y: model.shapeRect.minY)
 
+            // A small overdue-reminder dot on the folded pill (spec §3.5). Read directly here in
+            // `body` — not through a computed property on `NotchViewModel`, whose `widgets` array
+            // is `@ObservationIgnored` — so SwiftUI's observation tracking, triggered by actually
+            // evaluating `widget.badge` (which for `RemindersWidget` reads `RemindersStore.overdue`
+            // through the existential), registers on that store property and this view redraws
+            // when it changes.
+            if model.state == .folded, !model.isGhosted, model.widgets.contains(where: { $0.badge == .dot }) {
+                Circle()
+                    .fill(Palette.secondaryText)
+                    .frame(width: 4, height: 4)
+                    .position(x: model.shapeRect.midX, y: model.shapeRect.midY)
+            }
+
             let content = model.metrics.contentRect(in: model.shapeRect)
             stateContent
                 .frame(width: content.width, height: content.height)
