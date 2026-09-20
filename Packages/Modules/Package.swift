@@ -13,6 +13,7 @@ let package = Package(
         .library(name: "Persistence", targets: ["Persistence"]),
         .library(name: "ShelfFeature", targets: ["ShelfFeature"]),
         .library(name: "NotesFeature", targets: ["NotesFeature"]),
+        .library(name: "RemindersFeature", targets: ["RemindersFeature"]),
     ],
     targets: [
         .target(name: "AppInfo"),
@@ -23,11 +24,13 @@ let package = Package(
         .target(name: "Persistence", dependencies: ["AppInfo"]),
         .target(name: "ShelfFeature", dependencies: ["NotchWidgetAPI", "Persistence", "DesignSystem", "AppInfo"]),
         .target(name: "NotesFeature", dependencies: ["NotchWidgetAPI", "Persistence", "DesignSystem", "AppInfo"]),
+        .target(name: "RemindersFeature", dependencies: ["NotchWidgetAPI", "Persistence", "DesignSystem", "AppInfo"]),
         .testTarget(name: "AppInfoTests", dependencies: ["AppInfo"]),
         .testTarget(name: "NotchKitTests", dependencies: ["NotchKit", "NotchWidgetAPI"]),
         .testTarget(name: "SettingsFeatureTests", dependencies: ["SettingsFeature"]),
         .testTarget(name: "PersistenceTests", dependencies: ["Persistence"]),
         .testTarget(name: "ShelfFeatureTests", dependencies: ["ShelfFeature"]),
         .testTarget(name: "NotesFeatureTests", dependencies: ["NotesFeature", "Persistence"]),
+        .testTarget(name: "RemindersFeatureTests", dependencies: ["RemindersFeature", "Persistence"]),
     ]
 )
