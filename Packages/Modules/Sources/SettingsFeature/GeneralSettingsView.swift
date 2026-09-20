@@ -31,6 +31,8 @@ struct GeneralSettingsView: View {
                 Text("Tip: hold ⌥ and drag the notch to slide it along the edge.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
+
+                Toggle("Hide under full-screen apps", isOn: $preferences.hidesInFullScreen)
             }
 
             Section("Startup") {

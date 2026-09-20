@@ -66,6 +66,18 @@ struct ReminderTimeTests {
         #expect(ReminderTime.tomorrow(hour: 8).resolve(now: now, calendar: calendar) == date(2026, 6, 2, 8, 0, calendar: calendar))
     }
 
+    @Test func presetChipsSubstituteTheConfiguredTonightAndTomorrowHours() {
+        let chips = ReminderTime.presetChips(tonightHour: 22, tomorrowHour: 7)
+        #expect(chips.first(where: { $0.id == "tonight" })?.time == .tonight(hour: 22))
+        #expect(chips.first(where: { $0.id == "tomorrow" })?.time == .tomorrow(hour: 7))
+    }
+
+    @Test func presetChipsDefaultToSpecHours() {
+        let chips = ReminderTime.presetChips()
+        #expect(chips.first(where: { $0.id == "tonight" })?.time == .tonight())
+        #expect(chips.first(where: { $0.id == "tomorrow" })?.time == .tomorrow())
+    }
+
     @Test func customPassesTheDateThroughUnchanged() {
         let calendar = self.calendar
         let now = date(2026, 6, 1, 6, 0, calendar: calendar)

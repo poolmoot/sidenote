@@ -1,7 +1,9 @@
 import AppKit
+import SwiftUI
 import UserNotifications
 import Observation
 import AppInfo
+import DesignSystem
 import NotchKit
 import NotchWidgetAPI
 import SettingsFeature
@@ -25,7 +27,6 @@ final class AppEnvironment {
 
     init() {
         let preferences = Preferences()
-        let settings = SettingsWindowController(preferences: preferences)
 
         let shelfFileStore = JSONFileStore<ShelfDocument>(url: Self.makeShelfFileURL())
         let shelfStore = ShelfStore(store: shelfFileStore)
@@ -45,8 +46,22 @@ final class AppEnvironment {
         let remindersStore = RemindersStore(store: remindersFileStore, scheduler: UNReminderScheduler())
         let remindersWidget = RemindersWidget(store: remindersStore)
 
+        // Settings › Appearance's accent colour flows through `Palette` process-wide — set once
+        // here, then kept in sync by `observePreferences()`.
+        Palette.accent = preferences.accentColor.color
+
         let widgets: [any NotchWidget] = [shelfWidget, notesWidget, remindersWidget]
         let notch = NotchController(widgets: widgets, configuration: preferences.notchConfiguration)
+        let settings = SettingsWindowController(preferences: preferences) {
+            NSHostingController(
+                rootView: SettingsView(preferences: preferences, widgets: widgets) {
+                    ShelfSettingsTab(store: shelfStore)
+                        .tabItem { Label("Shelf", systemImage: "tray") }
+                    NotesSettingsTab(store: notesStore)
+                        .tabItem { Label("Notes", systemImage: "note.text") }
+                }
+            )
+        }
         let statusItem = StatusItemController(
             isNotchVisible: { preferences.isNotchVisible },
             onOpenSettings: { settings.show() },
@@ -78,7 +93,9 @@ final class AppEnvironment {
     func start() {
         statusItem.install()
         notch.start()
+        applyReminderSettings()
         observePreferences()
+        observeReminderSettings()
         // Spec §4.7: reconcile against the system's actual pending notification requests once at
         // launch, rather than trusting `reminders.json` alone (a crash between saving a reminder
         // and scheduling it, or a stale request left behind, would otherwise go unnoticed).
@@ -125,16 +142,38 @@ final class AppEnvironment {
         return FileManager.default.temporaryDirectory.appendingPathComponent("reminders.json")
     }
 
-    /// Pushes every preference change into the notch. `withObservationTracking` fires once, so it
-    /// re-registers itself after each change.
+    /// Pushes every preference change into the notch and `Palette`. `withObservationTracking`
+    /// fires once, so it re-registers itself after each change.
     private func observePreferences() {
         withObservationTracking {
             _ = preferences.notchConfiguration
+            _ = preferences.accentColor
         } onChange: { [weak self] in
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 notch.apply(preferences.notchConfiguration)
+                Palette.accent = preferences.accentColor.color
                 observePreferences()
+            }
+        }
+    }
+
+    /// Pushes the snooze length and chip hours (Settings › Reminders) into `RemindersStore`, which
+    /// can't read `Preferences` itself (feature modules never depend on `SettingsFeature`).
+    private func applyReminderSettings() {
+        remindersStore.snoozeInterval = TimeInterval(preferences.snoozeMinutes * 60)
+        remindersStore.tonightHour = preferences.tonightHour
+        remindersStore.tomorrowHour = preferences.tomorrowHour
+    }
+
+    private func observeReminderSettings() {
+        withObservationTracking {
+            _ = (preferences.snoozeMinutes, preferences.tonightHour, preferences.tomorrowHour)
+        } onChange: { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                applyReminderSettings()
+                observeReminderSettings()
             }
         }
     }

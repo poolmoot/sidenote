@@ -107,7 +107,7 @@ struct RemindersView: View {
 
     private var chipRow: some View {
         HStack(spacing: 6) {
-            ForEach(ReminderTime.presetChips) { chip in
+            ForEach(store.chips) { chip in
                 chipButton(chip.label) { addReminder(time: chip.time) }
             }
             chipButton("Custom…") { isCustomPickerShowing.toggle() }

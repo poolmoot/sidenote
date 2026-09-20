@@ -25,8 +25,20 @@ public final class RemindersStore {
     @ObservationIgnored private let scheduler: any ReminderScheduler
     @ObservationIgnored private let now: () -> Date
     @ObservationIgnored private let calendar: Calendar
-    @ObservationIgnored private let snoozeInterval: TimeInterval
     @ObservationIgnored private let logger: Logger
+    /// How far `snooze(id:)` pushes a reminder's `fireDate` out. Settable, not just an init
+    /// parameter — Settings › Reminders' snooze-length picker (spec §3.6) changes this live, the
+    /// same way `NotchController.apply(_:)` reacts to other preference changes.
+    public var snoozeInterval: TimeInterval
+    /// The "Tonight"/"Tomorrow" chip hours (spec §3.6), exposed as `chips` below. Also settable
+    /// live from Settings.
+    public var tonightHour: Int
+    public var tomorrowHour: Int
+    /// The chip row `RemindersView` renders, with the current `tonightHour`/`tomorrowHour`
+    /// substituted in.
+    public var chips: [TimeChip] {
+        ReminderTime.presetChips(tonightHour: tonightHour, tomorrowHour: tomorrowHour)
+    }
     @ObservationIgnored private var hasRequestedAuthorization = false
     /// The reminder most recently marked done, kept for a single level of undo (spec §3.5: "Done
     /// reminders are removed (⌘Z undo while the widget is open)") — same shape as Notes' delete
@@ -53,8 +65,10 @@ public final class RemindersStore {
         self.scheduler = scheduler
         self.now = now
         self.calendar = calendar
-        self.snoozeInterval = snoozeInterval
         self.logger = logger
+        self.snoozeInterval = snoozeInterval
+        self.tonightHour = 20
+        self.tomorrowHour = 9
         // A document from a future, unrecognized schema is quarantined rather than accepted as
         // though it were version 1 — see `JSONFileStore.load(isValid:)`.
         reminders = (store.load(isValid: { $0.version == 1 }) ?? RemindersDocument()).reminders

@@ -211,6 +211,26 @@ final class RemindersStoreTests {
         #expect(store.reminders.first(where: { $0.id == reminder.id })?.fireDate == fixedNow.addingTimeInterval(60))
     }
 
+    /// Settings › Reminders' snooze-length picker changes `snoozeInterval` live on the same store
+    /// instance — it isn't just an init-time constant.
+    @Test func snoozeIntervalIsSettableLiveAfterConstruction() {
+        let (store, _) = makeStore()
+        store.snoozeInterval = 30 * 60
+        let reminder = store.add(text: "buy milk", fireDate: fixedNow.addingTimeInterval(-300))
+
+        store.snooze(id: reminder.id)
+
+        #expect(store.reminders.first(where: { $0.id == reminder.id })?.fireDate == fixedNow.addingTimeInterval(30 * 60))
+    }
+
+    @Test func chipsReflectTheConfiguredTonightAndTomorrowHours() {
+        let (store, _) = makeStore()
+        store.tonightHour = 23
+        store.tomorrowHour = 6
+        #expect(store.chips.first(where: { $0.id == "tonight" })?.time == .tonight(hour: 23))
+        #expect(store.chips.first(where: { $0.id == "tomorrow" })?.time == .tomorrow(hour: 6))
+    }
+
     @Test func snoozeOnADoneReminderIsANoOp() {
         let (store, scheduler) = makeStore()
         let reminder = store.add(text: "buy milk", fireDate: fixedNow.addingTimeInterval(300))

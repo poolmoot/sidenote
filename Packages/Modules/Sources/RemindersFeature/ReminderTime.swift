@@ -56,12 +56,15 @@ public struct TimeChip: Identifiable, Sendable {
 }
 
 public extension ReminderTime {
-    /// The fixed chip row from spec §3.5, in display order. "Custom…" isn't included here — it
-    /// opens a date picker rather than resolving to a fixed `ReminderTime` on tap.
-    static let presetChips: [TimeChip] = [
-        TimeChip(id: "5min", label: "5 min", time: .inMinutes(5)),
-        TimeChip(id: "30min", label: "30 min", time: .inMinutes(30)),
-        TimeChip(id: "tonight", label: "Tonight", time: .tonight()),
-        TimeChip(id: "tomorrow", label: "Tomorrow", time: .tomorrow()),
-    ]
+    /// The chip row from spec §3.5, in display order, with the "Tonight"/"Tomorrow" hours from
+    /// Settings › Reminders (spec §3.6) substituted in. "Custom…" isn't included here — it opens a
+    /// date picker rather than resolving to a fixed `ReminderTime` on tap.
+    static func presetChips(tonightHour: Int = 20, tomorrowHour: Int = 9) -> [TimeChip] {
+        [
+            TimeChip(id: "5min", label: "5 min", time: .inMinutes(5)),
+            TimeChip(id: "30min", label: "30 min", time: .inMinutes(30)),
+            TimeChip(id: "tonight", label: "Tonight", time: .tonight(hour: tonightHour)),
+            TimeChip(id: "tomorrow", label: "Tomorrow", time: .tomorrow(hour: tomorrowHour)),
+        ]
+    }
 }

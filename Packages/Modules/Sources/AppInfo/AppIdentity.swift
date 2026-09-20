@@ -9,6 +9,9 @@ public struct AppIdentity: Sendable, Equatable {
     public let name: String
     public let bundleIdentifier: String
     public let version: String
+    /// `CFBundleVersion` — the build number shown on Settings › About, distinct from the
+    /// user-facing `version` (`CFBundleShortVersionString`).
+    public let build: String
 
     public init(infoDictionary: [String: Any]) {
         func value(_ key: String) -> String? {
@@ -18,6 +21,7 @@ public struct AppIdentity: Sendable, Equatable {
         name = value("CFBundleDisplayName") ?? value("CFBundleName") ?? "App"
         bundleIdentifier = value("CFBundleIdentifier") ?? "local.app"
         version = value("CFBundleShortVersionString") ?? "0.0.0"
+        build = value("CFBundleVersion") ?? "0"
     }
 
     public static let current = AppIdentity(infoDictionary: Bundle.main.infoDictionary ?? [:])

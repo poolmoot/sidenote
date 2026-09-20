@@ -8,10 +8,12 @@ struct AppIdentityTests {
             "CFBundleName": "Bundle",
             "CFBundleIdentifier": "com.example.display",
             "CFBundleShortVersionString": "1.2.3",
+            "CFBundleVersion": "42",
         ])
         #expect(identity.name == "Display")
         #expect(identity.bundleIdentifier == "com.example.display")
         #expect(identity.version == "1.2.3")
+        #expect(identity.build == "42")
     }
 
     @Test func fallsBackToBundleNameWhenDisplayNameIsEmpty() {
@@ -24,5 +26,6 @@ struct AppIdentityTests {
         #expect(identity.name == "App")
         #expect(identity.bundleIdentifier == "local.app")
         #expect(identity.version == "0.0.0")
+        #expect(identity.build == "0")
     }
 }
