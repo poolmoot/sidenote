@@ -16,13 +16,16 @@ struct AboutSettingsView: View {
             Text("Version \(identity.version) (\(identity.build))")
                 .font(.callout)
                 .foregroundStyle(.secondary)
-            Link("View on GitHub", destination: AboutSettingsView.repositoryURL)
-                .font(.callout)
+            // Read from Info.plist (fixed post-review: this used to be a URL literal in Swift),
+            // via `AppIdentity.repositoryURL` — omitted entirely rather than guessed if the build
+            // didn't set it.
+            if let repositoryURL = identity.repositoryURL {
+                Link("View on GitHub", destination: repositoryURL)
+                    .font(.callout)
+            }
             Spacer()
         }
         .frame(maxWidth: .infinity)
         .padding()
     }
-
-    private static let repositoryURL = URL(string: "https://github.com/poolmoot/sidenote")!
 }

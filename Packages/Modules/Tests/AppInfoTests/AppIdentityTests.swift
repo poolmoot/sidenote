@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import AppInfo
 
@@ -14,6 +15,15 @@ struct AppIdentityTests {
         #expect(identity.bundleIdentifier == "com.example.display")
         #expect(identity.version == "1.2.3")
         #expect(identity.build == "42")
+    }
+
+    @Test func readsTheRepositoryURLFromInfoPlist() {
+        let identity = AppIdentity(infoDictionary: ["GitHubRepositoryURL": "https://github.com/poolmoot/sidenote"])
+        #expect(identity.repositoryURL == URL(string: "https://github.com/poolmoot/sidenote"))
+    }
+
+    @Test func repositoryURLIsNilWhenTheKeyIsMissing() {
+        #expect(AppIdentity(infoDictionary: [:]).repositoryURL == nil)
     }
 
     @Test func fallsBackToBundleNameWhenDisplayNameIsEmpty() {

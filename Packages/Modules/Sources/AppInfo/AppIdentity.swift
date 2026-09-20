@@ -12,6 +12,12 @@ public struct AppIdentity: Sendable, Equatable {
     /// `CFBundleVersion` — the build number shown on Settings › About, distinct from the
     /// user-facing `version` (`CFBundleShortVersionString`).
     public let build: String
+    /// Settings › About's "View on GitHub" link, read from the `GitHubRepositoryURL` Info.plist
+    /// key (`project.yml`'s `INFOPLIST_KEY_GitHubRepositoryURL`) — not a Swift literal, so this
+    /// isn't "the app name in Swift" (`AGENTS.md` rule 3 is about the product name specifically).
+    /// `nil` when the key is missing or isn't a valid URL (e.g. a test `infoDictionary`), in which
+    /// case Settings simply omits the link rather than pointing at a guessed address.
+    public let repositoryURL: URL?
 
     public init(infoDictionary: [String: Any]) {
         func value(_ key: String) -> String? {
@@ -22,6 +28,7 @@ public struct AppIdentity: Sendable, Equatable {
         bundleIdentifier = value("CFBundleIdentifier") ?? "local.app"
         version = value("CFBundleShortVersionString") ?? "0.0.0"
         build = value("CFBundleVersion") ?? "0"
+        repositoryURL = value("GitHubRepositoryURL").flatMap(URL.init(string:))
     }
 
     public static let current = AppIdentity(infoDictionary: Bundle.main.infoDictionary ?? [:])

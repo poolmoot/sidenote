@@ -43,6 +43,10 @@ targets:
         INFOPLIST_KEY_CFBundleDisplayName: $(APP_NAME)
         INFOPLIST_KEY_LSUIElement: YES
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
+        # Read via AppIdentity.current.repositoryURL — Settings › About's "View on GitHub" link
+        # (spec §3.6). Not Swift-literal app branding, so this doesn't conflict with "the app
+        # name lives only in Config/Branding.xcconfig" — it's the repo, not the product name.
+        INFOPLIST_KEY_GitHubRepositoryURL: https://github.com/poolmoot/sidenote
         CODE_SIGN_ENTITLEMENTS: Config/App.entitlements
     dependencies:
       - package: Modules
