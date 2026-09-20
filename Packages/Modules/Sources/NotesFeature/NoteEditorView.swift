@@ -28,6 +28,9 @@ private struct ChecklistRow: Identifiable {
 /// doesn't fill the list with untouched "New note" rows), and flushes any pending write.
 struct NoteEditorView: View {
     let noteID: UUID
+    /// True when `+` created this note for this editor: only such a note is discarded if it is
+    /// left empty. A note that existed before and was cleared on purpose is the user's to keep.
+    var isNewlyCreated: Bool = false
     let store: NotesStore
     let context: WidgetContext
     let onBack: () -> Void
@@ -70,8 +73,8 @@ struct NoteEditorView: View {
         }
         .onDisappear {
             context.setEditing(false)
-            if store.text(for: noteID).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                store.delete(id: noteID)
+            if isNewlyCreated, store.text(for: noteID).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                store.discardUnsavedNewNote(id: noteID)
             }
             store.flush()
         }

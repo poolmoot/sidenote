@@ -74,6 +74,23 @@ public final class NotesStore {
         persist()
     }
 
+    /// Removes a note the user never typed into, without touching the undo slot.
+    ///
+    /// A `+` press has to create the note up front so the editor has something to bind to, but a
+    /// note nobody typed into was never really made — discarding it must not cost the user the
+    /// undo they are still holding for a note they deliberately deleted.
+    public func discardUnsavedNewNote(id: UUID) {
+        // "Never typed into" is a fact about the note, not a promise from the caller: an untouched
+        // note still has its creation timestamp. A note the user cleared on purpose has been
+        // updated since, so it is kept.
+        guard let index = notes.firstIndex(where: { $0.id == id }),
+              notes[index].text.isEmpty,
+              notes[index].updatedAt == notes[index].createdAt
+        else { return }
+        notes.remove(at: index)
+        persist()
+    }
+
     /// Drops the single-level undo. Called when the widget closes (spec §3.4).
     public func clearUndo() {
         deleted = nil

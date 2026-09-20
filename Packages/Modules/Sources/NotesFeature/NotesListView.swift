@@ -9,11 +9,19 @@ struct NotesView: View {
     let context: WidgetContext
 
     @State private var openNoteID: UUID?
+    /// The note `+` made most recently, so leaving it empty discards it rather than keeping a blank row.
+    @State private var createdNoteID: UUID?
 
     var body: some View {
         Group {
             if let openNoteID, store.notes.contains(where: { $0.id == openNoteID }) {
-                NoteEditorView(noteID: openNoteID, store: store, context: context, onBack: { self.openNoteID = nil })
+                NoteEditorView(
+                    noteID: openNoteID,
+                    isNewlyCreated: openNoteID == createdNoteID,
+                    store: store,
+                    context: context,
+                    onBack: { self.openNoteID = nil }
+                )
             } else {
                 listContent
             }
@@ -98,6 +106,7 @@ struct NotesView: View {
 
     private func createNote() {
         let note = store.create()
+        createdNoteID = note.id
         openNoteID = note.id
     }
 }

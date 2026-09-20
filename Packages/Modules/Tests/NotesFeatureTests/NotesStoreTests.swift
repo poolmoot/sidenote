@@ -243,3 +243,37 @@ final class NotesStoreTests {
         #expect(note.preview == "milk, eggs")
     }
 }
+
+@MainActor
+struct DiscardingNewNotesTests {
+    private func store() throws -> NotesStore {
+        let directory = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return NotesStore(store: JSONFileStore<NotesDocument>(url: directory.appendingPathComponent("notes.json")))
+    }
+
+    @Test func discardingAnUntouchedNewNoteLeavesAnEarlierDeletionUndoable() throws {
+        let notes = try store()
+        let keeper = notes.create()
+        notes.update(id: keeper.id, text: "shopping list")
+        notes.delete(id: keeper.id)          // the deletion the user wants back
+
+        let blank = notes.create()           // "+" pressed, nothing typed
+        notes.discardUnsavedNewNote(id: blank.id)
+        #expect(notes.notes.isEmpty)
+
+        notes.undoDelete()                   // ⌘Z must restore the real note, not the blank one
+        #expect(notes.notes.map(\.text) == ["shopping list"])
+    }
+
+    @Test func anExistingNoteClearedByTheUserIsKept() throws {
+        let notes = try store()
+        let note = notes.create()
+        notes.update(id: note.id, text: "draft")
+        notes.update(id: note.id, text: "")   // cleared on purpose
+
+        notes.discardUnsavedNewNote(id: note.id)
+        // The guard only discards a note that was never written to; this one was, so it stays.
+        #expect(notes.notes.count == 1)
+    }
+}
