@@ -30,9 +30,11 @@ public final class RemindersStore {
     @ObservationIgnored private var hasRequestedAuthorization = false
     /// The reminder most recently marked done, kept for a single level of undo (spec §3.5: "Done
     /// reminders are removed (⌘Z undo while the widget is open)") — same shape as Notes' delete
-    /// undo. Cleared by `clearUndo()`, which the widget calls when it closes, so ⌘Z never reaches
-    /// back past the last time the widget was open.
-    @ObservationIgnored private var lastDone: Reminder?
+    /// undo. Cleared (and, with it, every `.done` reminder purged for good) by `clearUndo()`,
+    /// which the widget calls when it closes, so ⌘Z never reaches back past the last time the
+    /// widget was open. Not `@ObservationIgnored`: `canUndoLastDone` needs to be recomputed
+    /// reliably when this changes, same as any other tracked property.
+    private var lastDone: Reminder?
     /// The single outstanding wake-up for the soonest pending reminder (spec §4.7's "one
     /// non-repeating timer"). Re-armed by `recompute()` whenever the reminder set changes;
     /// cancelled outright when nothing is pending. This is the only timer this store owns — no
@@ -65,14 +67,20 @@ public final class RemindersStore {
     /// there is one, is always the global minimum.
     public var nextDueDate: Date? { overdue.first?.fireDate ?? upcoming.first?.fireDate }
 
-    /// Adds a reminder, saves it, and schedules its notification. Requests notification
-    /// permission the first time this is called (spec §3.5) — but scheduling and persistence
-    /// never wait on that request, and happen the same whether it's granted or denied (spec §6).
+    /// Adds a reminder, saves it, and schedules its notification — unless `fireDate` is already
+    /// in the past (e.g. a custom date picked behind the clock), in which case it's saved and
+    /// shown as overdue immediately with no notification request: scheduling it would just fire a
+    /// banner the instant it's created, which isn't a reminder "going off", it's the UI lagging.
+    /// Requests notification permission the first time this is called (spec §3.5) — but scheduling
+    /// and persistence never wait on that request, and happen the same whether it's granted or
+    /// denied (spec §6).
     @discardableResult
     public func add(text: String, fireDate: Date) -> Reminder {
         let reminder = Reminder(text: text, fireDate: fireDate)
         reminders.append(reminder)
-        scheduler.schedule(reminder)
+        if fireDate > now() {
+            scheduler.schedule(reminder)
+        }
         persist()
         recompute()
         requestAuthorizationIfNeeded()
@@ -106,9 +114,16 @@ public final class RemindersStore {
         recompute()
     }
 
-    /// Drops the single-level undo. Called when the widget closes (spec §3.5).
+    /// Drops the single-level undo, and with it, purges every `.done` reminder for good (spec
+    /// §4.7: "Done" removes it from the list — until now, this store only ever *hid* a done
+    /// reminder from `overdue`/`upcoming`, keeping it in `reminders` indefinitely so `undoLastDone`
+    /// could bring it back). Called when the widget closes, so a done reminder survives exactly
+    /// as long as ⌘Z can still reach it, same as Notes' delete/undo.
     public func clearUndo() {
         lastDone = nil
+        guard reminders.contains(where: { $0.status == .done }) else { return }
+        reminders.removeAll { $0.status == .done }
+        persist()
     }
 
     /// Pushes `id`'s `fireDate` to `now + snoozeInterval` and reschedules it. A no-op if `id`
@@ -131,26 +146,27 @@ public final class RemindersStore {
     }
 
     /// Reconciles in-app state with the system's actual notification requests (spec §4.7): any
-    /// pending reminder missing a request gets one scheduled; any request with no matching
-    /// pending reminder is cancelled; a pending reminder whose time has already passed is left
-    /// alone (it just shows as overdue — `recompute()` already handles that from the clock).
-    /// Also refreshes `notificationsDenied` from the system's actual authorization state, so a
-    /// denial from a previous launch still shows the banner without re-prompting.
+    /// still-future pending reminder missing a request gets one scheduled; any request with no
+    /// matching pending reminder is cancelled; a pending reminder whose time has already passed is
+    /// left alone — no request (scheduling one would just re-fire it immediately, every launch,
+    /// for a reminder the user never acted on), just shown as overdue, which `recompute()` already
+    /// handles from the clock. Also refreshes `notificationsDenied` from the system's actual
+    /// current authorization state (in either direction — denied *or* granted), so this reflects
+    /// reality whether permission was revoked, denied, or granted since the store last checked.
     public func reconcile() async {
         let pendingReminders = reminders.filter { $0.status == .pending }
         let pendingReminderIDs = Set(pendingReminders.map(\.id))
         let scheduledIDs = await scheduler.pendingIDs()
+        let currentMoment = now()
 
-        for reminder in pendingReminders where !scheduledIDs.contains(reminder.id) {
+        for reminder in pendingReminders where !scheduledIDs.contains(reminder.id) && reminder.fireDate > currentMoment {
             scheduler.schedule(reminder)
         }
         for orphanID in scheduledIDs.subtracting(pendingReminderIDs) {
             scheduler.cancel(id: orphanID)
         }
 
-        if await scheduler.authorizationStatus() == .denied {
-            notificationsDenied = true
-        }
+        notificationsDenied = await scheduler.authorizationStatus() == .denied
     }
 
     /// Writes any pending change synchronously. Called on fold and at app termination.

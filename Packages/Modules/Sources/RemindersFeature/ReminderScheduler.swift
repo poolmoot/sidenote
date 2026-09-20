@@ -35,7 +35,9 @@ public protocol ReminderScheduler: AnyObject {
     /// identifier = `reminder.id.uuidString`. Fire-and-forget: a scheduling failure is logged by
     /// the implementation and never thrown, so it can never block saving the reminder (spec §6).
     func schedule(_ reminder: Reminder)
-    /// Cancels the pending request for `id`, if any. A no-op if there isn't one.
+    /// Cancels the pending request for `id`, if any, and removes any already-delivered
+    /// notification for it from Notification Center (e.g. marking an overdue reminder Done should
+    /// clear its banner, not just stop a request that already fired). A no-op if there's neither.
     func cancel(id: UUID)
     /// The reminder IDs that currently have an outstanding pending request.
     func pendingIDs() async -> Set<UUID>
@@ -107,7 +109,12 @@ public final class UNReminderScheduler: ReminderScheduler {
     }
 
     public func cancel(id: UUID) {
+        // Both calls are needed: a pending request hasn't fired yet (e.g. cancelling before its
+        // time arrives), while a delivered notification is already sitting in Notification
+        // Center (e.g. marking an overdue reminder Done in the app) — removing only the pending
+        // request would leave that banner behind after the in-app reminder is gone.
         center.removePendingNotificationRequests(withIdentifiers: [id.uuidString])
+        center.removeDeliveredNotifications(withIdentifiers: [id.uuidString])
     }
 
     public func pendingIDs() async -> Set<UUID> {

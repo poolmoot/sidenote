@@ -66,6 +66,19 @@ final class RemindersStoreTests {
         #expect(store.reminders.map(\.id) == [reminder.id])
     }
 
+    /// A custom date picked behind the clock (spec review fix): scheduling it would just fire a
+    /// notification banner the instant it's created, so `add` must skip `scheduler.schedule`
+    /// entirely for it — while still saving it and showing it as overdue right away.
+    @Test func addWithAPastFireDateDoesNotScheduleButStillShowsAsOverdue() {
+        let (store, scheduler) = makeStore()
+        let reminder = store.add(text: "already late", fireDate: fixedNow.addingTimeInterval(-60))
+
+        #expect(scheduler.scheduleCallCount == 0)
+        #expect(scheduler.scheduled.isEmpty)
+        #expect(store.reminders.map(\.id) == [reminder.id])
+        #expect(store.overdue.map(\.id) == [reminder.id])
+    }
+
     // MARK: markDone
 
     @Test func markDoneCancelsTheRequestAndMarksTheStatus() {
@@ -130,8 +143,32 @@ final class RemindersStoreTests {
         store.clearUndo()
         store.undoLastDone()
 
-        #expect(store.reminders.first(where: { $0.id == reminder.id })?.status == .done)
+        // `clearUndo` doesn't just block the restore — since review fix #3, it also purges every
+        // `.done` reminder outright, so the reminder is gone entirely rather than left `.done`.
+        #expect(store.reminders.first(where: { $0.id == reminder.id }) == nil)
         #expect(!store.canUndoLastDone)
+    }
+
+    /// Spec §4.7: "Done" removes a reminder from the list for good — but only once the widget has
+    /// actually closed and ⌘Z can no longer reach it. Before that, a done reminder is only
+    /// *hidden* (kept in `reminders` so `undoLastDone` can restore it).
+    @Test func clearUndoPurgesEveryDoneReminderAndPersists() {
+        let (store, _) = makeStore()
+        let done = store.add(text: "done", fireDate: fixedNow.addingTimeInterval(300))
+        let stillPending = store.add(text: "still pending", fireDate: fixedNow.addingTimeInterval(600))
+        store.markDone(id: done.id)
+        #expect(store.reminders.map(\.id).contains(done.id))
+
+        store.clearUndo()
+
+        #expect(store.reminders.map(\.id) == [stillPending.id])
+    }
+
+    @Test func clearUndoWithNothingDoneDoesNotTouchPendingReminders() {
+        let (store, _) = makeStore()
+        let reminder = store.add(text: "pending", fireDate: fixedNow.addingTimeInterval(300))
+        store.clearUndo()
+        #expect(store.reminders.map(\.id) == [reminder.id])
     }
 
     @Test func markingAnotherReminderDoneReplacesTheUndoSlot() {
@@ -287,9 +324,48 @@ final class RemindersStoreTests {
 
         #expect(store.reminders.first(where: { $0.id == overdueReminder.id })?.status == .pending)
         #expect(store.overdue.map(\.id) == [overdueReminder.id])
-        // Already scheduled by `add`; reconcile must not have cancelled it as though it were an
-        // orphan just because its time has passed.
+        // Not cancelled as though it were an orphan just because its time has passed...
         #expect(!scheduler.cancelledIDs.contains(overdueReminder.id))
+        // ...but not (re)scheduled either: `add` already skipped scheduling it (it was already
+        // overdue when created), and `reconcile` must not schedule a past-due pending reminder
+        // that has no request — that would just re-fire it on every relaunch (review fix #1).
+        #expect(scheduler.scheduleCallCount == 0)
+        #expect(scheduler.scheduled.isEmpty)
+    }
+
+    /// Review fix #1, tested directly against `reconcile()` rather than through `add` (which
+    /// already refuses to schedule a past-due reminder itself): a pending reminder loaded from
+    /// disk whose `fireDate` has already passed, with no outstanding request at all, must not get
+    /// one from `reconcile()` — that would make an ignored reminder re-fire on every relaunch,
+    /// since the scheduler clamps a past interval to a near-zero one rather than refusing it.
+    @Test func reconcileDoesNotScheduleAPastDuePendingReminderThatHasNoRequest() async {
+        let fileURL = directory.appendingPathComponent("reminders.json")
+        let seedingFileStore = JSONFileStore<RemindersDocument>(url: fileURL)
+        let overdueLeftover = Reminder(text: "overdue leftover", fireDate: fixedNow.addingTimeInterval(-60))
+        seedingFileStore.save(RemindersDocument(reminders: [overdueLeftover]))
+        seedingFileStore.flush()
+
+        let scheduler = FakeScheduler()
+        let loadingFileStore = JSONFileStore<RemindersDocument>(url: fileURL)
+        let store = RemindersStore(store: loadingFileStore, scheduler: scheduler, now: { self.fixedNow }, calendar: calendar)
+
+        await store.reconcile()
+
+        #expect(scheduler.scheduleCallCount == 0)
+        #expect(scheduler.scheduled.isEmpty)
+        #expect(store.overdue.map(\.id) == [overdueLeftover.id])
+    }
+
+    /// Review fix #7b: a pending reminder that already has an outstanding request must not be
+    /// scheduled again — `reconcile()` only fills in what's missing.
+    @Test func reconcileDoesNotRescheduleAReminderThatAlreadyHasARequest() async {
+        let (store, scheduler) = makeStore()
+        let reminder = store.add(text: "buy milk", fireDate: fixedNow.addingTimeInterval(300))
+        #expect(scheduler.scheduleCallCount == 1)
+
+        await store.reconcile()
+
+        #expect(scheduler.scheduleCallCount == 1)
     }
 
     @Test func reconcileMarksNotificationsDeniedFromAPastDenial() async {
@@ -303,6 +379,22 @@ final class RemindersStoreTests {
         #expect(store.notificationsDenied)
     }
 
+    /// `notificationsDenied` must track the system's current status in both directions: granting
+    /// permission (e.g. in System Settings) since the last check should clear a stale banner, not
+    /// just set one.
+    @Test func reconcileClearsNotificationsDeniedOncePermissionIsGranted() async {
+        let scheduler = FakeScheduler()
+        scheduler.currentStatus = .denied
+        let (store, _) = makeStore(scheduler: scheduler)
+        await store.reconcile()
+        #expect(store.notificationsDenied)
+
+        scheduler.currentStatus = .authorized
+        await store.reconcile()
+
+        #expect(!store.notificationsDenied)
+    }
+
     // MARK: persistence
 
     @Test func remindersSurviveAReloadThroughJSONFileStore() {
@@ -310,7 +402,6 @@ final class RemindersStoreTests {
         let firstFileStore = JSONFileStore<RemindersDocument>(url: fileURL)
         let store = RemindersStore(store: firstFileStore, scheduler: FakeScheduler(), now: { self.fixedNow }, calendar: calendar)
         let reminder = store.add(text: "remember this", fireDate: fixedNow.addingTimeInterval(300))
-        store.markDone(id: UUID()) // no-op, just exercising the path
         store.flush()
 
         let secondFileStore = JSONFileStore<RemindersDocument>(url: fileURL)
