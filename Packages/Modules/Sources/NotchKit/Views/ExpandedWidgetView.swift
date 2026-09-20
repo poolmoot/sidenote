@@ -32,8 +32,10 @@ struct ExpandedWidgetView: View {
         }
         .overlay {
             if dropTarget {
+                // `model.accentColor`, not `Palette.dropHighlight` — tracked, so a Settings ›
+                // Appearance change re-renders this border live (fixed post-review).
                 RoundedRectangle(cornerRadius: 12)
-                    .strokeBorder(Palette.dropHighlight, style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
+                    .strokeBorder(model.accentColor, style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
                     .overlay(Text("Drop here").font(.headline).foregroundStyle(Palette.primaryText))
                     .background(Palette.notch.opacity(0.85), in: RoundedRectangle(cornerRadius: 12))
             }

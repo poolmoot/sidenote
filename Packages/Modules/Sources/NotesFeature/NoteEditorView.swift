@@ -119,7 +119,11 @@ struct NoteEditorView: View {
                 store.toggleCheckbox(id: noteID, lineIndex: row.lineIndex)
             } label: {
                 Image(systemName: row.done ? "checkmark.square.fill" : "square")
-                    .foregroundStyle(row.done ? Color.accentColor : Palette.secondaryText)
+                    // The user's chosen accent colour (spec §3.6 Appearance), not the system
+                    // `Color.accentColor` (fixed post-review) — `NotesFeature` can't see
+                    // `NotchViewModel`'s tracked value (module boundary), so this reads
+                    // `Palette.accent` best-effort, same as every other colour in this view.
+                    .foregroundStyle(row.done ? Palette.accent : Palette.secondaryText)
             }
             .buttonStyle(.plain)
             .focusEffectDisabled()

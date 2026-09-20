@@ -1,4 +1,5 @@
 import CoreGraphics
+import SwiftUI
 import DesignSystem
 import NotchWidgetAPI
 
@@ -25,6 +26,11 @@ public struct NotchConfiguration: Equatable, Sendable {
     /// The enabled widgets, in the order their tiles show (spec §3.6 Widgets tab). An id with no
     /// matching widget is ignored; a widget with no entry here simply has no tile.
     public var enabledWidgetIDs: [WidgetID]
+    /// The user's accent colour (spec §3.6 Appearance tab), threaded through so the notch's own
+    /// chrome (tile hover/selection, the drop-target border) re-renders live when it changes —
+    /// `NotchViewModel.accentColor` is `@Observable`-tracked, unlike `Palette.accent`, which is a
+    /// plain static the rest of the app reads best-effort.
+    public var accentColor: Color
 
     public init(
         edge: NotchEdge = .right,
@@ -37,7 +43,8 @@ public struct NotchConfiguration: Equatable, Sendable {
         style: NotchStyle = .solid,
         pillSize: PillSize = .medium,
         reduceMotion: ReduceMotionSetting = .system,
-        enabledWidgetIDs: [WidgetID] = []
+        enabledWidgetIDs: [WidgetID] = [],
+        accentColor: Color = .accentColor
     ) {
         self.edge = edge
         self.displayID = displayID
@@ -50,5 +57,6 @@ public struct NotchConfiguration: Equatable, Sendable {
         self.pillSize = pillSize
         self.reduceMotion = reduceMotion
         self.enabledWidgetIDs = enabledWidgetIDs
+        self.accentColor = accentColor
     }
 }

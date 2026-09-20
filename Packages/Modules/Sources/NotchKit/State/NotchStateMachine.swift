@@ -34,9 +34,12 @@ public enum NotchEvent: Equatable, Sendable {
     case escape
     case resignedKey
     case shortcut(WidgetID)
-    /// The "toggle the notch" global shortcut (spec §4.8): open the tiles from anywhere while
-    /// folded, fold from anywhere otherwise. Unlike `.hoverDelayElapsed`, this doesn't require the
-    /// pointer to be inside the notch — it can arrive while the pointer is nowhere near it.
+    /// Opens the tiles from anywhere while folded, folds from anywhere otherwise — unlike
+    /// `.hoverDelayElapsed`, this doesn't require the pointer to be inside the notch, so it can
+    /// arrive while the pointer is nowhere near it. Not currently wired to the Settings ›
+    /// Shortcuts "toggle the notch" shortcut, which an owner ruling redirected to toggling the
+    /// notch's *visibility* (`Preferences.isNotchVisible`) instead — kept here as a tested,
+    /// available primitive for a future "toggle the tiles" affordance.
     case toggleRequested
 }
 
@@ -55,15 +58,27 @@ public struct NotchStateMachine: Equatable, Sendable {
     public private(set) var state: NotchState = .folded
     public private(set) var isPointerInside = false
     public private(set) var isEditing = false
-    /// The widget a file drag opens, or nil when no widget takes files.
-    public let dropWidget: WidgetID?
-    /// Every widget id the controller actually holds. A `.shortcut(id)` for anything outside this
-    /// set is ignored (deferred from M1: with the old fixed-enum `WidgetID` this could never
-    /// happen, but a string-backed id can now name a widget that no longer exists, e.g. a stale
-    /// shortcut assignment left over from a removed module).
-    private let knownWidgetIDs: Set<WidgetID>
+    /// The widget a file drag opens, or nil when no widget takes files. Settable via
+    /// `updateActiveWidgets(dropWidget:knownWidgetIDs:)` — a disabled widget must stop taking
+    /// drops and answering its shortcut without waiting for a relaunch.
+    public private(set) var dropWidget: WidgetID?
+    /// Every widget id the controller actually holds *and has enabled*. A `.shortcut(id)` for
+    /// anything outside this set is ignored (deferred from M1: with the old fixed-enum `WidgetID`
+    /// this could never happen, but a string-backed id can now name a widget that no longer
+    /// exists, e.g. a stale shortcut assignment left over from a removed module — or one that
+    /// still exists but was disabled in Settings › Widgets).
+    private var knownWidgetIDs: Set<WidgetID>
 
     public init(dropWidget: WidgetID?, knownWidgetIDs: Set<WidgetID> = []) {
+        self.dropWidget = dropWidget
+        self.knownWidgetIDs = knownWidgetIDs
+    }
+
+    /// Rebuilds `dropWidget`/`knownWidgetIDs` from the currently active widget list — called by
+    /// `NotchController` whenever `Preferences.enabledWidgetIDs` changes, so a disabled widget
+    /// immediately stops taking file drops or answering its shortcut, and a re-enabled one starts
+    /// again, with no relaunch needed.
+    public mutating func updateActiveWidgets(dropWidget: WidgetID?, knownWidgetIDs: Set<WidgetID>) {
         self.dropWidget = dropWidget
         self.knownWidgetIDs = knownWidgetIDs
     }

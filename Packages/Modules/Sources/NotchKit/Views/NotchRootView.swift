@@ -26,11 +26,12 @@ struct NotchRootView: View {
                 .offset(x: model.shapeRect.minX, y: model.shapeRect.minY)
 
             // A small overdue-reminder dot on the folded pill (spec §3.5). Read directly here in
-            // `body` — not through a computed property on `NotchViewModel`, whose `widgets` array
-            // is `@ObservationIgnored` — so SwiftUI's observation tracking, triggered by actually
-            // evaluating `widget.badge` (which for `RemindersWidget` reads `RemindersStore.overdue`
-            // through the existential), registers on that store property and this view redraws
-            // when it changes.
+            // `body` — not through a computed property on `NotchViewModel` — so SwiftUI's
+            // observation tracking, triggered by actually evaluating `widget.badge` (which for
+            // `RemindersWidget` reads `RemindersStore.overdue` through the existential), registers
+            // on that store property and this view redraws when it changes. (`model.widgets` is
+            // itself tracked too, unlike the rest of this view model's collections — see its
+            // declaration — but the badge redraw still depends on reaching into each widget.)
             if model.state == .folded, !model.isGhosted, model.widgets.contains(where: { $0.badge == .dot }) {
                 Circle()
                     .fill(Palette.secondaryText)
@@ -45,6 +46,11 @@ struct NotchRootView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .environment(\.colorScheme, .dark)
+        // Settings › Appearance's accent colour (spec §3.6), applied at the root so every control
+        // that styles itself from the environment's tint picks it up — and, because
+        // `model.accentColor` is `@Observable`-tracked (unlike the plain-static `Palette.accent`),
+        // this re-renders live when it changes.
+        .tint(model.accentColor)
     }
 
     @ViewBuilder

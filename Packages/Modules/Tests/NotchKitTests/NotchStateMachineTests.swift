@@ -221,4 +221,37 @@ struct NotchStateMachineTests {
         #expect(m.state == .folded)
         #expect(!m.isEditing)
     }
+
+    // MARK: updateActiveWidgets (disabling/enabling a widget live, spec §3.6 Widgets tab)
+
+    @Test func disablingAWidgetMakesItsShortcutIgnored() {
+        var m = machine()
+        _ = m.handle(.shortcut(.notes))
+        #expect(m.state == .expanded(.notes, dropTarget: false))
+
+        m.updateActiveWidgets(dropWidget: .shelf, knownWidgetIDs: [.shelf, .reminders])
+        #expect(m.handle(.shortcut(.notes)) == [])
+    }
+
+    @Test func reEnablingAWidgetMakesItsShortcutWorkAgain() {
+        var m = machine(knownWidgetIDs: [.shelf])
+        #expect(m.handle(.shortcut(.notes)) == [])
+
+        m.updateActiveWidgets(dropWidget: .shelf, knownWidgetIDs: [.shelf, .notes])
+        #expect(m.handle(.shortcut(.notes)) == [.cancelTimers, .makeKey])
+    }
+
+    @Test func disablingTheDropWidgetStopsFileDragFromOpeningIt() {
+        var m = machine(dropWidget: .shelf)
+        m.updateActiveWidgets(dropWidget: nil, knownWidgetIDs: [.notes, .reminders])
+        #expect(m.handle(.fileDragEntered) == [])
+        #expect(m.state == .folded)
+    }
+
+    @Test func updatingActiveWidgetsToANewDropWidgetTakesEffectImmediately() {
+        var m = machine(dropWidget: .shelf)
+        m.updateActiveWidgets(dropWidget: .notes, knownWidgetIDs: [.notes])
+        #expect(m.handle(.fileDragEntered) == [.cancelTimers])
+        #expect(m.state == .expanded(.notes, dropTarget: true))
+    }
 }

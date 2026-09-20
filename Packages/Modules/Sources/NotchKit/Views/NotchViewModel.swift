@@ -1,4 +1,5 @@
 import CoreGraphics
+import SwiftUI
 import Observation
 import DesignSystem
 import NotchWidgetAPI
@@ -34,6 +35,9 @@ final class NotchViewModel {
     var reduceMotion = false
     /// Solid black or Liquid Glass (spec §3.6, §5).
     var style: NotchStyle = .solid
+    /// The user's accent colour, tracked so tile hover/selection and the drop-target border
+    /// re-render live when Settings › Appearance changes it (see `NotchConfiguration.accentColor`).
+    var accentColor: Color = .accentColor
 
     @ObservationIgnored var onSelect: (WidgetID) -> Void = { _ in }
     @ObservationIgnored var onBack: () -> Void = {}

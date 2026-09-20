@@ -37,11 +37,15 @@ public final class NotchController {
     public init(widgets: [any NotchWidget], configuration: NotchConfiguration) {
         self.widgets = widgets
         self.configuration = configuration
-        machine = NotchStateMachine(
-            dropWidget: widgets.first { $0.acceptsFileDrops }?.id,
-            knownWidgetIDs: Set(widgets.map(\.id))
-        )
         metrics = .scaled(for: configuration.pillSize)
+        let activeWidgets = Self.resolveActiveWidgets(configuration.enabledWidgetIDs, in: widgets)
+        // Built from the *active* (enabled) widgets, not the full registry — a disabled widget
+        // must not take file drops or answer its shortcut (fixed post-review: both used to be
+        // computed once here from the full `widgets` array and never revisited).
+        machine = NotchStateMachine(
+            dropWidget: activeWidgets.first { $0.acceptsFileDrops }?.id,
+            knownWidgetIDs: Set(activeWidgets.map(\.id))
+        )
 
         let hosting = NotchHostingView(rootView: NotchRootView(model: model))
         hosting.sizingOptions = []
@@ -50,9 +54,10 @@ public final class NotchController {
         panel.contentView = container
 
         model.setRegistry(widgets)
-        model.widgets = Self.resolveActiveWidgets(configuration.enabledWidgetIDs, in: widgets)
+        model.widgets = activeWidgets
         model.metrics = metrics
         model.style = configuration.style
+        model.accentColor = configuration.accentColor
         wire()
     }
 
@@ -88,12 +93,37 @@ public final class NotchController {
         if old.style != newValue.style {
             model.style = newValue.style
         }
+        if old.accentColor != newValue.accentColor {
+            model.accentColor = newValue.accentColor
+        }
         if old.enabledWidgetIDs != newValue.enabledWidgetIDs {
-            model.widgets = Self.resolveActiveWidgets(newValue.enabledWidgetIDs, in: widgets)
-            updateShape(animated: false)
+            applyActiveWidgets(newValue.enabledWidgetIDs)
         }
         if old.reduceMotion != newValue.reduceMotion {
             updateShape(animated: false)
+        }
+    }
+
+    /// Rebuilds the active widget list and the state machine's notion of which widgets it holds
+    /// (fixed post-review: previously `dropWidget`/`knownWidgetIDs` were computed once at `init`
+    /// and never revisited, so a disabled Shelf kept taking file drops and a disabled widget kept
+    /// answering its shortcut). If the widget currently expanded was just disabled, folds first —
+    /// `.escape`'s own transition already re-renders the shape — rather than leaving the notch
+    /// open on a widget with no tile any more.
+    private func applyActiveWidgets(_ enabledWidgetIDs: [WidgetID]) {
+        let activeWidgets = Self.resolveActiveWidgets(enabledWidgetIDs, in: widgets)
+        model.widgets = activeWidgets
+        machine.updateActiveWidgets(
+            dropWidget: activeWidgets.first { $0.acceptsFileDrops }?.id,
+            knownWidgetIDs: Set(activeWidgets.map(\.id))
+        )
+        if let expandedID = machine.state.expandedWidget, !activeWidgets.contains(where: { $0.id == expandedID }) {
+            send(.escape)
+        } else {
+            // Animated (Reduce Motion permitting, via `updateShape`'s own gate): the tile column's
+            // depth/length changes with the widget count, and that resize should read as a resize,
+            // not a jump cut.
+            updateShape(animated: true)
         }
     }
 
