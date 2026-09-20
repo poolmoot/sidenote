@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 import NotchKit
+import NotchWidgetAPI
 @testable import SettingsFeature
 
 @MainActor
@@ -23,6 +24,7 @@ final class PreferencesTests {
         #expect(preferences.displayID == nil)
         #expect(preferences.alongOffset == 0)
         #expect(preferences.isNotchVisible)
+        #expect(preferences.enabledWidgetIDs == [.shelf, .notes, .reminders])
     }
 
     @Test func changesPersistAcrossInstances() {
@@ -66,5 +68,39 @@ final class PreferencesTests {
         preferences.alongOffset = 200
         preferences.resetPosition()
         #expect(preferences.alongOffset == 0)
+    }
+
+    // MARK: enabledWidgetIDs (spec §3.6 Widgets tab)
+
+    @Test func enabledWidgetOrderPersistsAcrossInstances() {
+        let first = Preferences(defaults: defaults)
+        first.enabledWidgetIDs = [.reminders, .shelf]
+
+        let second = Preferences(defaults: defaults)
+        #expect(second.enabledWidgetIDs == [.reminders, .shelf])
+    }
+
+    @Test func unknownSavedWidgetIDsAreDropped() {
+        defaults.set(["shelf", "some-removed-widget", "notes"], forKey: Preferences.Key.enabledWidgetIDs)
+        let preferences = Preferences(defaults: defaults)
+        #expect(preferences.enabledWidgetIDs == [.shelf, .notes, .reminders])
+    }
+
+    @Test func aNewlyRegisteredWidgetIsAppendedAtTheEnd() {
+        defaults.set(["reminders", "shelf"], forKey: Preferences.Key.enabledWidgetIDs)
+        let preferences = Preferences(defaults: defaults)
+        #expect(preferences.enabledWidgetIDs == [.reminders, .shelf, .notes])
+    }
+
+    @Test func duplicateSavedIDsAreDeduplicated() {
+        defaults.set(["shelf", "shelf", "notes"], forKey: Preferences.Key.enabledWidgetIDs)
+        let preferences = Preferences(defaults: defaults)
+        #expect(preferences.enabledWidgetIDs == [.shelf, .notes, .reminders])
+    }
+
+    @Test func mapsEnabledWidgetIDsToNotchConfiguration() {
+        let preferences = Preferences(defaults: defaults)
+        preferences.enabledWidgetIDs = [.notes]
+        #expect(preferences.notchConfiguration.enabledWidgetIDs == [.notes])
     }
 }

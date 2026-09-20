@@ -20,7 +20,7 @@ let package = Package(
         .target(name: "DesignSystem"),
         .target(name: "NotchWidgetAPI"),
         .target(name: "NotchKit", dependencies: ["NotchWidgetAPI", "DesignSystem", "AppInfo"]),
-        .target(name: "SettingsFeature", dependencies: ["NotchKit", "AppInfo"]),
+        .target(name: "SettingsFeature", dependencies: ["NotchKit", "NotchWidgetAPI", "DesignSystem", "AppInfo"]),
         .target(name: "Persistence", dependencies: ["AppInfo"]),
         .target(name: "ShelfFeature", dependencies: ["NotchWidgetAPI", "Persistence", "DesignSystem", "AppInfo"]),
         .target(name: "NotesFeature", dependencies: ["NotchWidgetAPI", "Persistence", "DesignSystem", "AppInfo"]),

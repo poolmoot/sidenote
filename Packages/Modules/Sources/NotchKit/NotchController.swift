@@ -19,8 +19,11 @@ public final class NotchController {
     public private(set) var configuration: NotchConfiguration
     public var state: NotchState { machine.state }
 
+    /// Every widget the app registered — fixed for the controller's lifetime. What's actually
+    /// shown as a tile is `activeWidgets`, a filtered, reordered view of this driven by
+    /// `configuration.enabledWidgetIDs`.
     private let widgets: [any NotchWidget]
-    private let metrics = NotchMetrics.standard
+    private var metrics = NotchMetrics.standard
     private var machine: NotchStateMachine
     private let model = NotchViewModel()
     private let panel = NotchPanel()
@@ -34,7 +37,11 @@ public final class NotchController {
     public init(widgets: [any NotchWidget], configuration: NotchConfiguration) {
         self.widgets = widgets
         self.configuration = configuration
-        machine = NotchStateMachine(dropWidget: widgets.first { $0.acceptsFileDrops }?.id)
+        machine = NotchStateMachine(
+            dropWidget: widgets.first { $0.acceptsFileDrops }?.id,
+            knownWidgetIDs: Set(widgets.map(\.id))
+        )
+        metrics = .scaled(for: configuration.pillSize)
 
         let hosting = NotchHostingView(rootView: NotchRootView(model: model))
         hosting.sizingOptions = []
@@ -42,8 +49,10 @@ public final class NotchController {
         container.addSubview(hosting)
         panel.contentView = container
 
-        model.widgets = widgets
+        model.setRegistry(widgets)
+        model.widgets = Self.resolveActiveWidgets(configuration.enabledWidgetIDs, in: widgets)
         model.metrics = metrics
+        model.style = configuration.style
         wire()
     }
 
@@ -62,7 +71,12 @@ public final class NotchController {
     public func apply(_ newValue: NotchConfiguration) {
         let old = configuration
         configuration = newValue
-        if old.edge != newValue.edge || old.displayID != newValue.displayID || old.alongOffset != newValue.alongOffset {
+        if old.pillSize != newValue.pillSize {
+            metrics = .scaled(for: newValue.pillSize)
+            model.metrics = metrics
+        }
+        if old.edge != newValue.edge || old.displayID != newValue.displayID || old.alongOffset != newValue.alongOffset
+            || old.pillSize != newValue.pillSize {
             layout()
         }
         if old.isVisible != newValue.isVisible {
@@ -70,6 +84,16 @@ public final class NotchController {
         }
         if old.hidesInFullScreen != newValue.hidesInFullScreen {
             updateGhosting()
+        }
+        if old.style != newValue.style {
+            model.style = newValue.style
+        }
+        if old.enabledWidgetIDs != newValue.enabledWidgetIDs {
+            model.widgets = Self.resolveActiveWidgets(newValue.enabledWidgetIDs, in: widgets)
+            updateShape(animated: false)
+        }
+        if old.reduceMotion != newValue.reduceMotion {
+            updateShape(animated: false)
         }
     }
 
@@ -186,7 +210,8 @@ public final class NotchController {
         return index.map { screens[$0] }
     }
 
-    /// Re-places the panel: on start, on screen changes and when the edge or display changes.
+    /// Re-places the panel: on start, on screen changes and when the edge, display or pill size
+    /// changes.
     private func layout() {
         guard let screen = currentScreen() else { return }
         let depth = metrics.panelDepth(expandedSizes: widgets.map(\.expandedSize))
@@ -194,17 +219,33 @@ public final class NotchController {
         panel.setFrame(frame, display: false)
         model.edge = configuration.edge
         updateShape(animated: false)
+        // Deferred from M1: switching edge/display can move the pill onto (or off of) a screen
+        // that's currently showing a full-screen app, so full-screen ghosting must be
+        // re-evaluated here too, not just on the space-change/app-activation notifications
+        // `FullScreenObserver` already listens for.
+        fullScreen.refresh()
     }
 
+    /// Every registered widget's expanded size, keyed by id. `uniquingKeysWith:` guards against a
+    /// duplicate id trapping this in a crash (deferred from M1) — the first widget with a given id
+    /// wins, same as `NotchViewModel.setRegistry`.
     private var expandedSizes: [WidgetID: CGSize] {
-        Dictionary(uniqueKeysWithValues: widgets.map { ($0.id, $0.expandedSize) })
+        Dictionary(widgets.map { ($0.id, $0.expandedSize) }, uniquingKeysWith: { first, _ in first })
+    }
+
+    /// Filters `all` down to `ids`, in that order, dropping any id with no matching widget
+    /// (defensive: `Preferences` already does this filtering itself, but nothing stops some other
+    /// caller from handing the controller a stale id).
+    private static func resolveActiveWidgets(_ ids: [WidgetID], in all: [any NotchWidget]) -> [any NotchWidget] {
+        let registry = Dictionary(all.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        return ids.compactMap { registry[$0] }
     }
 
     /// Moves the shape to match the current state. The panel frame never changes here — only the
     /// shape inside it animates — so the window is never resized per animation frame.
     private func updateShape(animated: Bool) {
         let state = machine.state
-        let size = metrics.shapeSize(for: state, tileCount: widgets.count, expandedSizes: expandedSizes)
+        let size = metrics.shapeSize(for: state, tileCount: model.widgets.count, expandedSizes: expandedSizes)
         let rect = NotchGeometry.shapeRect(
             panelSize: panel.frame.size, edge: configuration.edge, size: size, alongOffset: configuration.alongOffset
         )
@@ -215,19 +256,31 @@ public final class NotchController {
             lengthInset: state == .folded ? metrics.flare : 0
         )
         let radius = metrics.cornerRadius(for: state)
+        let reduceMotion = isReduceMotionActive
 
         model.hotRect = hot
+        model.reduceMotion = reduceMotion
         let apply = { [model] in
             model.state = state
             model.shapeRect = rect
             model.cornerRadius = radius
         }
-        if animated && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+        if animated && !reduceMotion {
             withAnimation(NotchMotion.unfold, apply)
         } else {
             apply()
         }
         container.setHotRect(hot)
+    }
+
+    /// Settings › Appearance's "Reduce motion" override, falling back to the system accessibility
+    /// setting (spec §3.6).
+    private var isReduceMotionActive: Bool {
+        switch configuration.reduceMotion {
+        case .system: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        case .always: true
+        case .never: false
+        }
     }
 
     /// The pill only disappears under a full-screen app when the user asked for that.

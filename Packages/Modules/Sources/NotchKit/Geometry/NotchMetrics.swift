@@ -1,6 +1,23 @@
 import CoreGraphics
 import NotchWidgetAPI
 
+/// The pill's size (spec §3.6): scales the folded pill and the tiles column. M is `.standard`.
+public enum PillSize: String, CaseIterable, Codable, Sendable, Identifiable {
+    case small
+    case medium
+    case large
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .small: "Small"
+        case .medium: "Medium"
+        case .large: "Large"
+        }
+    }
+}
+
 /// The size of the notch shape. `depth` runs in from the screen edge; `length` runs along it and
 /// includes both concave flares.
 public struct NotchShapeSize: Equatable, Sendable {
@@ -35,6 +52,26 @@ public struct NotchMetrics: Equatable, Sendable {
     public init() {}
 
     public static let standard = NotchMetrics()
+
+    /// Scales the folded pill's depth/length and the tiles column for S/M/L (spec §3.6); the hover
+    /// margins are left untouched on purpose ("leaving the hover rules unchanged" — a bigger pill
+    /// must not also become more sensitive to a nearby pointer, and a smaller one must not become
+    /// less so).
+    public static func scaled(for size: PillSize) -> NotchMetrics {
+        let scale: CGFloat
+        switch size {
+        case .small: scale = 0.75
+        case .medium: scale = 1.0
+        case .large: scale = 1.3
+        }
+        var metrics = standard
+        metrics.foldedDepth = (standard.foldedDepth * scale).rounded()
+        metrics.foldedBodyLength = (standard.foldedBodyLength * scale).rounded()
+        metrics.tilesDepth = (standard.tilesDepth * scale).rounded()
+        metrics.tileExtent = (standard.tileExtent * scale).rounded()
+        metrics.gearExtent = (standard.gearExtent * scale).rounded()
+        return metrics
+    }
 
     public func shapeSize(for state: NotchState, tileCount: Int, expandedSizes: [WidgetID: CGSize]) -> NotchShapeSize {
         switch state {

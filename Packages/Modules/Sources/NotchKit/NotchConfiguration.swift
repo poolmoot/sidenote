@@ -1,4 +1,6 @@
 import CoreGraphics
+import DesignSystem
+import NotchWidgetAPI
 
 /// The user-controlled settings the notch needs. The app maps its preferences onto this, so
 /// NotchKit never reads UserDefaults itself.
@@ -14,6 +16,15 @@ public struct NotchConfiguration: Equatable, Sendable {
     public var hidesInFullScreen: Bool
     public var hoverDelay: Duration
     public var graceDelay: Duration
+    /// Solid black or Liquid Glass (spec §3.6, §5).
+    public var style: NotchStyle
+    /// S / M / L, scaling `NotchMetrics` (spec §3.6).
+    public var pillSize: PillSize
+    /// System / Always / Never (spec §3.6).
+    public var reduceMotion: ReduceMotionSetting
+    /// The enabled widgets, in the order their tiles show (spec §3.6 Widgets tab). An id with no
+    /// matching widget is ignored; a widget with no entry here simply has no tile.
+    public var enabledWidgetIDs: [WidgetID]
 
     public init(
         edge: NotchEdge = .right,
@@ -22,7 +33,11 @@ public struct NotchConfiguration: Equatable, Sendable {
         isVisible: Bool = true,
         hidesInFullScreen: Bool = false,
         hoverDelay: Duration = .milliseconds(150),
-        graceDelay: Duration = .milliseconds(250)
+        graceDelay: Duration = .milliseconds(250),
+        style: NotchStyle = .solid,
+        pillSize: PillSize = .medium,
+        reduceMotion: ReduceMotionSetting = .system,
+        enabledWidgetIDs: [WidgetID] = []
     ) {
         self.edge = edge
         self.displayID = displayID
@@ -31,5 +46,9 @@ public struct NotchConfiguration: Equatable, Sendable {
         self.hidesInFullScreen = hidesInFullScreen
         self.hoverDelay = hoverDelay
         self.graceDelay = graceDelay
+        self.style = style
+        self.pillSize = pillSize
+        self.reduceMotion = reduceMotion
+        self.enabledWidgetIDs = enabledWidgetIDs
     }
 }

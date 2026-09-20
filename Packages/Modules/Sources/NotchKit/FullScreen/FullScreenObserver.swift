@@ -34,6 +34,13 @@ final class FullScreenObserver {
         followUp?.cancel()
     }
 
+    /// Re-checks immediately, for a change `start()`'s notifications don't cover — e.g. the
+    /// notch moving to a different screen or edge (deferred from M1). A no-op call when the
+    /// answer hasn't changed, same as the notification-driven path.
+    func refresh() {
+        evaluate()
+    }
+
     private func spaceOrAppChanged() {
         evaluate()
         followUp?.cancel()

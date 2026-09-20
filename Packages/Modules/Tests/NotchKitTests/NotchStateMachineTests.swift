@@ -3,8 +3,8 @@ import NotchWidgetAPI
 @testable import NotchKit
 
 struct NotchStateMachineTests {
-    private func machine(dropWidget: WidgetID? = .shelf) -> NotchStateMachine {
-        NotchStateMachine(dropWidget: dropWidget)
+    private func machine(dropWidget: WidgetID? = .shelf, knownWidgetIDs: Set<WidgetID> = [.shelf, .notes, .reminders]) -> NotchStateMachine {
+        NotchStateMachine(dropWidget: dropWidget, knownWidgetIDs: knownWidgetIDs)
     }
 
     /// A machine already showing tiles with the pointer inside.
@@ -194,5 +194,31 @@ struct NotchStateMachineTests {
         var m = expandedNotes()
         _ = m.handle(.shortcut(.shelf))
         #expect(m.state == .expanded(.shelf, dropTarget: false))
+    }
+
+    @Test func shortcutForAnUnknownWidgetIsIgnored() {
+        var m = machine(knownWidgetIDs: [.shelf])
+        #expect(m.handle(.shortcut(.notes)) == [])
+        #expect(m.state == .folded)
+    }
+
+    @Test func toggleOpensTilesWhenFoldedFromAnywhere() {
+        var m = machine()
+        #expect(m.handle(.toggleRequested) == [])
+        #expect(m.state == .tiles)
+    }
+
+    @Test func toggleFoldsFromTiles() {
+        var m = tiles()
+        #expect(m.handle(.toggleRequested) == [.cancelTimers, .resignKey])
+        #expect(m.state == .folded)
+    }
+
+    @Test func toggleFoldsFromExpandedEvenWhileEditing() {
+        var m = expandedNotes()
+        _ = m.handle(.editingBegan)
+        #expect(m.handle(.toggleRequested) == [.cancelTimers, .resignKey])
+        #expect(m.state == .folded)
+        #expect(!m.isEditing)
     }
 }

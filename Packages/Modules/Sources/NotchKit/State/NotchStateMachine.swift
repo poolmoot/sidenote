@@ -34,6 +34,10 @@ public enum NotchEvent: Equatable, Sendable {
     case escape
     case resignedKey
     case shortcut(WidgetID)
+    /// The "toggle the notch" global shortcut (spec §4.8): open the tiles from anywhere while
+    /// folded, fold from anywhere otherwise. Unlike `.hoverDelayElapsed`, this doesn't require the
+    /// pointer to be inside the notch — it can arrive while the pointer is nowhere near it.
+    case toggleRequested
 }
 
 /// Side effects the controller must carry out after a transition.
@@ -53,9 +57,15 @@ public struct NotchStateMachine: Equatable, Sendable {
     public private(set) var isEditing = false
     /// The widget a file drag opens, or nil when no widget takes files.
     public let dropWidget: WidgetID?
+    /// Every widget id the controller actually holds. A `.shortcut(id)` for anything outside this
+    /// set is ignored (deferred from M1: with the old fixed-enum `WidgetID` this could never
+    /// happen, but a string-backed id can now name a widget that no longer exists, e.g. a stale
+    /// shortcut assignment left over from a removed module).
+    private let knownWidgetIDs: Set<WidgetID>
 
-    public init(dropWidget: WidgetID?) {
+    public init(dropWidget: WidgetID?, knownWidgetIDs: Set<WidgetID> = []) {
         self.dropWidget = dropWidget
+        self.knownWidgetIDs = knownWidgetIDs
     }
 
     public mutating func handle(_ event: NotchEvent) -> [NotchEffect] {
@@ -130,10 +140,18 @@ public struct NotchStateMachine: Equatable, Sendable {
             return fold()
 
         case .shortcut(let id):
+            guard knownWidgetIDs.contains(id) else { return [] }
             if state.expandedWidget == id { return fold() }
             isEditing = false
             state = .expanded(id, dropTarget: false)
             return [.cancelTimers, .makeKey]
+
+        case .toggleRequested:
+            if state == .folded {
+                state = .tiles
+                return []
+            }
+            return fold()
         }
     }
 

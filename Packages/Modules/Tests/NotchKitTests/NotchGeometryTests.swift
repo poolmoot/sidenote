@@ -110,6 +110,55 @@ struct NotchMetricsTests {
     }
 }
 
+struct NotchMetricsScalingTests {
+    @Test func mediumMatchesStandard() {
+        #expect(NotchMetrics.scaled(for: .medium) == NotchMetrics.standard)
+    }
+
+    @Test func smallShrinksFoldedAndTilesDimensions() {
+        let standard = NotchMetrics.standard
+        let small = NotchMetrics.scaled(for: .small)
+        #expect(small.foldedDepth < standard.foldedDepth)
+        #expect(small.foldedBodyLength < standard.foldedBodyLength)
+        #expect(small.tilesDepth < standard.tilesDepth)
+        #expect(small.tileExtent < standard.tileExtent)
+        #expect(small.gearExtent < standard.gearExtent)
+    }
+
+    @Test func largeGrowsFoldedAndTilesDimensions() {
+        let standard = NotchMetrics.standard
+        let large = NotchMetrics.scaled(for: .large)
+        #expect(large.foldedDepth > standard.foldedDepth)
+        #expect(large.foldedBodyLength > standard.foldedBodyLength)
+        #expect(large.tilesDepth > standard.tilesDepth)
+        #expect(large.tileExtent > standard.tileExtent)
+        #expect(large.gearExtent > standard.gearExtent)
+    }
+
+    @Test func hoverMarginsAreUnaffectedBySize() {
+        for size in PillSize.allCases {
+            let metrics = NotchMetrics.scaled(for: size)
+            #expect(metrics.hoverMargin == NotchMetrics.standard.hoverMargin)
+            #expect(metrics.foldedHoverMargin == NotchMetrics.standard.foldedHoverMargin)
+        }
+    }
+
+    /// The hot-rect rules (grown-inward margin, folded flares trimmed off the ends) still hold once
+    /// every dimension is scaled — nothing about `NotchGeometry.hotRect` special-cases pill size.
+    @Test func hotRectRulesStillHoldAtEverySize() {
+        for size in PillSize.allCases {
+            let metrics = NotchMetrics.scaled(for: size)
+            let foldedSize = metrics.shapeSize(for: .folded, tileCount: 3, expandedSizes: [:])
+            let shapeRect = CGRect(x: 0, y: 400, width: foldedSize.depth, height: foldedSize.length)
+            let hot = NotchGeometry.hotRect(
+                shapeRect: shapeRect, edge: .right, margin: metrics.foldedHoverMargin, lengthInset: metrics.flare
+            )
+            #expect(hot.width == shapeRect.width + metrics.foldedHoverMargin)
+            #expect(hot.height == shapeRect.height - 2 * metrics.flare)
+        }
+    }
+}
+
 struct HotRectTests {
     let folded = CGRect(x: 320, y: 400, width: 6, height: 96)   // pill body 72 + 12 flare each end
 

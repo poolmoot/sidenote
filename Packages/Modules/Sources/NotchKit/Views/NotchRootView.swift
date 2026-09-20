@@ -20,7 +20,7 @@ struct NotchRootView: View {
                 .offset(x: model.hotRect.minX, y: model.hotRect.minY)
 
             SideNotchShape(edge: model.edge, flare: model.metrics.flare, cornerRadius: model.cornerRadius)
-                .fill(Palette.notch)
+                .notchSurface(style: model.style, isFolded: model.state == .folded)
                 .opacity(model.isGhosted && model.state == .folded ? 0 : 1)
                 .frame(width: model.shapeRect.width, height: model.shapeRect.height)
                 .offset(x: model.shapeRect.minX, y: model.shapeRect.minY)
@@ -54,12 +54,20 @@ struct NotchRootView: View {
             EmptyView()
         case .tiles:
             TilesView(model: model)
-                .transition(.opacity.animation(NotchMotion.contents))
+                .transition(contentTransition)
         case .expanded(let id, let dropTarget):
             if let widget = model.widget(id) {
                 ExpandedWidgetView(model: model, widget: widget, dropTarget: dropTarget)
-                    .transition(.opacity.animation(NotchMotion.contents))
+                    .transition(contentTransition)
             }
         }
+    }
+
+    /// Deferred from M1: Reduce Motion (system or the Settings override) used to silence only the
+    /// shape's spring — the tiles/expanded content still faded in on its own animation, attached
+    /// directly to the transition rather than the outer `withAnimation`. `.identity` swaps content
+    /// instantly, with no animation at all, the same way `updateShape` skips `withAnimation`.
+    private var contentTransition: AnyTransition {
+        model.reduceMotion ? .identity : .opacity.animation(NotchMotion.contents)
     }
 }
