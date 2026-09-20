@@ -31,6 +31,13 @@ struct NotesExportFilenameTests {
         let existing: Set<String> = ["Untitled.md"]
         #expect(NotesExport.filename(for: "", existingNames: existing) == "Untitled 2.md")
     }
+
+    /// A leading "." makes a hidden file on macOS — a title that happens to start with one (e.g.
+    /// a note about a ".env" file) must not silently produce one.
+    @Test func aLeadingDotIsReplacedSoTheFileIsNotHidden() {
+        #expect(NotesExport.filename(for: ".env notes", existingNames: []) == "-env notes.md")
+        #expect(NotesExport.filename(for: "...", existingNames: []) == "-...md")
+    }
 }
 
 struct NotesExportWritingTests {
@@ -67,5 +74,21 @@ struct NotesExportWritingTests {
 
     @Test func exportingNoNotesWritesNothing() {
         #expect(NotesExport.exportAll([], to: directory) == 0)
+    }
+
+    /// Fixed post-review: `exportAll` used to start its collision-tracking set empty, so exporting
+    /// into a folder that already had a same-named file (from an earlier export, or anything else
+    /// the user put there) silently overwrote it instead of disambiguating.
+    @Test func aNoteWhoseNameAlreadyExistsInTheFolderIsDisambiguatedRatherThanOverwritten() throws {
+        let existingURL = directory.appendingPathComponent("Groceries.md")
+        try "pre-existing content, not written by this export".write(to: existingURL, atomically: true, encoding: .utf8)
+
+        let written = NotesExport.exportAll([Note(text: "Groceries\nmilk")], to: directory)
+        #expect(written == 1)
+
+        let untouched = try String(contentsOf: existingURL, encoding: .utf8)
+        #expect(untouched == "pre-existing content, not written by this export")
+        let newFile = try String(contentsOf: directory.appendingPathComponent("Groceries 2.md"), encoding: .utf8)
+        #expect(newFile == "Groceries\nmilk")
     }
 }

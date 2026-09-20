@@ -26,6 +26,7 @@ let package = Package(
         .target(name: "NotesFeature", dependencies: ["NotchWidgetAPI", "Persistence", "DesignSystem", "AppInfo"]),
         .target(name: "RemindersFeature", dependencies: ["NotchWidgetAPI", "Persistence", "DesignSystem", "AppInfo"]),
         .testTarget(name: "AppInfoTests", dependencies: ["AppInfo"]),
+        .testTarget(name: "NotchWidgetAPITests", dependencies: ["NotchWidgetAPI"]),
         .testTarget(name: "NotchKitTests", dependencies: ["NotchKit", "NotchWidgetAPI"]),
         .testTarget(name: "SettingsFeatureTests", dependencies: ["SettingsFeature"]),
         .testTarget(name: "PersistenceTests", dependencies: ["Persistence"]),

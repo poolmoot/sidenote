@@ -4,41 +4,80 @@ import NotchWidgetAPI
 /// Settings › Widgets: a checkbox and drag-to-reorder per widget (spec §3.6). Enabled widgets are
 /// listed first, in the order `enabledWidgetIDs` already carries; any disabled widget follows, so
 /// unchecking one doesn't remove it from view — it can still be reordered and re-checked later.
+///
+/// `rows` is derived fresh from `preferences.enabledWidgetIDs` on every `body` evaluation
+/// (AGENTS rule 5: no `@State` copy of store/Preferences data, fixed post-review — this used to
+/// seed a `@State [WidgetRow]` once from `Preferences` and only ever write back *from* it) — a
+/// reorder or toggle computes the new order/membership and writes straight back to
+/// `preferences.enabledWidgetIDs`.
 struct WidgetsSettingsView: View {
     let preferences: Preferences
     let widgets: [any NotchWidget]
 
-    @State private var rows: [WidgetRow] = []
+    private var rows: [WidgetRow] {
+        Self.makeRows(widgets: widgets, enabledWidgetIDs: preferences.enabledWidgetIDs)
+    }
 
     var body: some View {
-        List {
-            reorderableRows
-        }
-        .onAppear {
-            guard rows.isEmpty else { return }
-            rows = Self.makeRows(widgets: widgets, enabledWidgetIDs: preferences.enabledWidgetIDs)
-        }
-        .onChange(of: rows) { _, _ in persist() }
-    }
-
-    @ViewBuilder
-    private var reorderableRows: some View {
         if #available(macOS 27, *) {
-            ForEach($rows) { $row in
-                WidgetRowView(row: $row)
+            List {
+                ForEach(rows) { row in
+                    WidgetRowView(row: row, onToggle: { setEnabled($0, for: row.id) })
+                }
+                .reorderable()
             }
-            .reorderable()
+            .reorderContainer(for: WidgetRow.self) { difference in
+                persist(Self.applying(difference, to: rows))
+            }
         } else {
-            ForEach($rows) { $row in
-                WidgetRowView(row: $row)
-            }
-            .onMove { indices, newOffset in
-                rows.move(fromOffsets: indices, toOffset: newOffset)
+            List {
+                ForEach(rows) { row in
+                    WidgetRowView(row: row, onToggle: { setEnabled($0, for: row.id) })
+                }
+                .onMove { indices, newOffset in
+                    var reordered = rows
+                    reordered.move(fromOffsets: indices, toOffset: newOffset)
+                    persist(reordered)
+                }
             }
         }
     }
 
-    private func persist() {
+    private func setEnabled(_ isEnabled: Bool, for id: WidgetID) {
+        var updated = rows
+        guard let index = updated.firstIndex(where: { $0.id == id }) else { return }
+        updated[index].isEnabled = isEnabled
+        persist(updated)
+    }
+
+    /// Applies a macOS 27 `reorderContainer` difference to `current`'s order. `sources` is every
+    /// id being moved (a multi-selection drag can move more than one); it's removed from its old
+    /// position(s) and reinserted as a block just before `destination`'s anchor id, or at the end.
+    @available(macOS 27, *)
+    private static func applying(
+        _ difference: ReorderDifference<WidgetID, ReorderableSingleCollectionIdentifier>,
+        to current: [WidgetRow]
+    ) -> [WidgetRow] {
+        var order = current.map(\.id)
+        let moving = Set(difference.sources)
+        order.removeAll { moving.contains($0) }
+
+        let insertionIndex: Int
+        switch difference.destination.position {
+        case .before(let anchorID):
+            insertionIndex = order.firstIndex(of: anchorID) ?? order.count
+        case .end:
+            insertionIndex = order.count
+        @unknown default:
+            insertionIndex = order.count
+        }
+        order.insert(contentsOf: difference.sources, at: min(insertionIndex, order.count))
+
+        let byID = Dictionary(uniqueKeysWithValues: current.map { ($0.id, $0) })
+        return order.compactMap { byID[$0] }
+    }
+
+    private func persist(_ rows: [WidgetRow]) {
         let enabled = rows.filter(\.isEnabled).map(\.id)
         guard enabled != preferences.enabledWidgetIDs else { return }
         preferences.enabledWidgetIDs = enabled
@@ -72,10 +111,11 @@ struct WidgetRow: Identifiable, Equatable {
 }
 
 private struct WidgetRowView: View {
-    @Binding var row: WidgetRow
+    let row: WidgetRow
+    let onToggle: (Bool) -> Void
 
     var body: some View {
-        Toggle(isOn: $row.isEnabled) {
+        Toggle(isOn: Binding(get: { row.isEnabled }, set: { onToggle($0) })) {
             Label(row.title, systemImage: row.systemImage)
         }
     }
