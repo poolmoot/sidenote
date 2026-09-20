@@ -24,6 +24,7 @@ final class AppEnvironment {
     private let notesStore: NotesStore
     private let remindersStore: RemindersStore
     private let notificationDelegate: NotificationDelegate
+    private let shortcutCenter = ShortcutCenter()
 
     init() {
         let preferences = Preferences()
@@ -94,8 +95,11 @@ final class AppEnvironment {
         statusItem.install()
         notch.start()
         applyReminderSettings()
+        shortcutCenter.start()
+        applyShortcuts()
         observePreferences()
         observeReminderSettings()
+        observeShortcuts()
         // Spec §4.7: reconcile against the system's actual pending notification requests once at
         // launch, rather than trusting `reminders.json` alone (a crash between saving a reminder
         // and scheduling it, or a stale request left behind, would otherwise go unnoticed).
@@ -174,6 +178,29 @@ final class AppEnvironment {
                 guard let self else { return }
                 applyReminderSettings()
                 observeReminderSettings()
+            }
+        }
+    }
+
+    /// Registers every current shortcut assignment (spec §4.8). A shortcut opens its widget the
+    /// same way the reminder-notification tap already does; the toggle shortcut folds or opens the
+    /// tiles from anywhere.
+    private func applyShortcuts() {
+        shortcutCenter.apply(
+            preferences.shortcuts,
+            onToggle: { [notch] in notch.send(.toggleRequested) },
+            onWidget: { [notch] id in notch.send(.shortcut(id)) }
+        )
+    }
+
+    private func observeShortcuts() {
+        withObservationTracking {
+            _ = preferences.shortcuts
+        } onChange: { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                applyShortcuts()
+                observeShortcuts()
             }
         }
     }
