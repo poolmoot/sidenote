@@ -1,4 +1,5 @@
 import AppKit
+import UserNotifications
 import Observation
 import AppInfo
 import NotchKit
@@ -7,6 +8,7 @@ import SettingsFeature
 import Persistence
 import ShelfFeature
 import NotesFeature
+import RemindersFeature
 
 /// The composition root: the one place that builds every object and wires modules together.
 /// Modules never reach for each other directly.
@@ -18,6 +20,8 @@ final class AppEnvironment {
     private let statusItem: StatusItemController
     private let shelfStore: ShelfStore
     private let notesStore: NotesStore
+    private let remindersStore: RemindersStore
+    private let notificationDelegate: NotificationDelegate
 
     init() {
         let preferences = Preferences()
@@ -34,7 +38,14 @@ final class AppEnvironment {
         let notesStore = NotesStore(store: notesFileStore)
         let notesWidget = NotesWidget(store: notesStore)
 
-        let widgets: [any NotchWidget] = [shelfWidget, notesWidget] + PlaceholderWidget.all()
+        let remindersFileStore = JSONFileStore<RemindersDocument>(
+            url: Self.makeRemindersFileURL(),
+            logger: AppIdentity.current.logger("reminders")
+        )
+        let remindersStore = RemindersStore(store: remindersFileStore, scheduler: UNReminderScheduler())
+        let remindersWidget = RemindersWidget(store: remindersStore)
+
+        let widgets: [any NotchWidget] = [shelfWidget, notesWidget, remindersWidget]
         let notch = NotchController(widgets: widgets, configuration: preferences.notchConfiguration)
         let statusItem = StatusItemController(
             isNotchVisible: { preferences.isNotchVisible },
@@ -46,18 +57,32 @@ final class AppEnvironment {
         notch.onAlongOffsetCommitted = { preferences.alongOffset = $0 }
         notch.contextMenuProvider = { statusItem.makeMenu() }
 
+        // Clicking a delivered reminder's notification body opens the widget directly (spec
+        // §3.5), the same way a global keyboard shortcut would.
+        let notificationDelegate = NotificationDelegate(
+            store: remindersStore,
+            onOpenReminders: { notch.send(.shortcut(.reminders)) }
+        )
+        UNUserNotificationCenter.current().delegate = notificationDelegate
+
         self.preferences = preferences
         self.settings = settings
         self.notch = notch
         self.statusItem = statusItem
         self.shelfStore = shelfStore
         self.notesStore = notesStore
+        self.remindersStore = remindersStore
+        self.notificationDelegate = notificationDelegate
     }
 
     func start() {
         statusItem.install()
         notch.start()
         observePreferences()
+        // Spec §4.7: reconcile against the system's actual pending notification requests once at
+        // launch, rather than trusting `reminders.json` alone (a crash between saving a reminder
+        // and scheduling it, or a stale request left behind, would otherwise go unnoticed).
+        Task { await remindersStore.reconcile() }
     }
 
     func showSettings() {
@@ -68,6 +93,7 @@ final class AppEnvironment {
     func flush() {
         shelfStore.flush()
         notesStore.flush()
+        remindersStore.flush()
     }
 
     /// `shelf.json`'s URL, falling back to a temporary directory in the unlikely event
@@ -88,6 +114,15 @@ final class AppEnvironment {
         }
         AppIdentity.current.logger("notes").error("Falling back to a temporary notes file: Application Support was unavailable.")
         return FileManager.default.temporaryDirectory.appendingPathComponent("notes.json")
+    }
+
+    /// `reminders.json`'s URL, with the same temporary-directory fallback as `makeShelfFileURL()`.
+    private static func makeRemindersFileURL() -> URL {
+        if let url = try? AppPaths.remindersFile() {
+            return url
+        }
+        AppIdentity.current.logger("reminders").error("Falling back to a temporary reminders file: Application Support was unavailable.")
+        return FileManager.default.temporaryDirectory.appendingPathComponent("reminders.json")
     }
 
     /// Pushes every preference change into the notch. `withObservationTracking` fires once, so it
