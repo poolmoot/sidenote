@@ -19,13 +19,27 @@ final class PreferencesTests {
         UserDefaults.standard.removePersistentDomain(forName: suiteName)
     }
 
+    /// The three widgets this app ships, matching what `AppEnvironment` would actually pass in —
+    /// tests that don't care about widget-specific behaviour just use `Preferences(defaults:)` and
+    /// get an (intentionally) empty `knownWidgetIDs`.
+    private static let allWidgetIDs: [WidgetID] = [.shelf, .notes, .reminders]
+
+    private func makePreferences(knownWidgetIDs: [WidgetID] = allWidgetIDs) -> Preferences {
+        Preferences(defaults: defaults, knownWidgetIDs: knownWidgetIDs)
+    }
+
     @Test func defaultsWhenNothingSaved() {
-        let preferences = Preferences(defaults: defaults)
+        let preferences = makePreferences()
         #expect(preferences.edge == .right)
         #expect(preferences.displayID == nil)
         #expect(preferences.alongOffset == 0)
         #expect(preferences.isNotchVisible)
         #expect(preferences.enabledWidgetIDs == [.shelf, .notes, .reminders])
+    }
+
+    @Test func knownWidgetIDsDefaultsToEmptyWhenNotProvided() {
+        let preferences = Preferences(defaults: defaults)
+        #expect(preferences.enabledWidgetIDs.isEmpty)
     }
 
     @Test func changesPersistAcrossInstances() {
@@ -74,35 +88,66 @@ final class PreferencesTests {
     // MARK: enabledWidgetIDs (spec §3.6 Widgets tab)
 
     @Test func enabledWidgetOrderPersistsAcrossInstances() {
-        let first = Preferences(defaults: defaults)
+        let first = makePreferences()
         first.enabledWidgetIDs = [.reminders, .shelf]
 
-        let second = Preferences(defaults: defaults)
+        let second = makePreferences()
         #expect(second.enabledWidgetIDs == [.reminders, .shelf])
+    }
+
+    /// Owner-ruling regression (post-review): a widget the user deliberately turned off must stay
+    /// off across a relaunch — it must never be silently re-appended as though it were newly
+    /// added to the app.
+    @Test func aDeliberatelyDisabledWidgetStaysDisabledAcrossARelaunch() {
+        let first = makePreferences()
+        first.enabledWidgetIDs = [.shelf, .reminders] // Notes turned off.
+
+        let second = makePreferences()
+        #expect(second.enabledWidgetIDs == [.shelf, .reminders])
+        #expect(!second.enabledWidgetIDs.contains(.notes))
     }
 
     @Test func unknownSavedWidgetIDsAreDropped() {
         defaults.set(["shelf", "some-removed-widget", "notes"], forKey: Preferences.Key.enabledWidgetIDs)
-        let preferences = Preferences(defaults: defaults)
+        let preferences = makePreferences()
         #expect(preferences.enabledWidgetIDs == [.shelf, .notes, .reminders])
     }
 
     @Test func aNewlyRegisteredWidgetIsAppendedAtTheEnd() {
         defaults.set(["reminders", "shelf"], forKey: Preferences.Key.enabledWidgetIDs)
-        let preferences = Preferences(defaults: defaults)
+        let preferences = makePreferences()
         #expect(preferences.enabledWidgetIDs == [.reminders, .shelf, .notes])
     }
 
     @Test func duplicateSavedIDsAreDeduplicated() {
         defaults.set(["shelf", "shelf", "notes"], forKey: Preferences.Key.enabledWidgetIDs)
-        let preferences = Preferences(defaults: defaults)
+        let preferences = makePreferences()
         #expect(preferences.enabledWidgetIDs == [.shelf, .notes, .reminders])
     }
 
     @Test func mapsEnabledWidgetIDsToNotchConfiguration() {
-        let preferences = Preferences(defaults: defaults)
+        let preferences = makePreferences()
         preferences.enabledWidgetIDs = [.notes]
         #expect(preferences.notchConfiguration.enabledWidgetIDs == [.notes])
+    }
+
+    // MARK: resolveEnabledWidgetIDs (pure static logic, tested directly)
+
+    @Test func resolveDropsUnknownAppendsNewAndKeepsADisabledWidgetDisabled() {
+        // Shelf and Notes were known as of the last save; the user disabled Notes (it's simply
+        // absent from `saved`). Reminders is new to this build — it was never in `previouslyKnown`
+        // — so it must append, while Notes must NOT come back.
+        let result = Preferences.resolveEnabledWidgetIDs(
+            saved: [.shelf],
+            knownWidgetIDs: [.shelf, .notes, .reminders],
+            previouslyKnown: [.shelf, .notes]
+        )
+        #expect(result == [.shelf, .reminders])
+    }
+
+    @Test func resolveWithNothingSavedEnablesEveryKnownWidgetInOrder() {
+        let result = Preferences.resolveEnabledWidgetIDs(saved: nil, knownWidgetIDs: [.notes, .shelf, .reminders])
+        #expect(result == [.notes, .shelf, .reminders])
     }
 
     // MARK: Appearance (spec §3.6 Appearance tab)
@@ -231,5 +276,13 @@ final class PreferencesTests {
 
         let second = Preferences(defaults: defaults)
         #expect(second.shortcuts.toggle == nil)
+    }
+
+    @Test func unavailableShortcutsDefaultsToEmptyAndIsNotPersisted() {
+        let first = Preferences(defaults: defaults)
+        first.unavailableShortcuts = [.toggle]
+
+        let second = Preferences(defaults: defaults)
+        #expect(second.unavailableShortcuts.isEmpty)
     }
 }

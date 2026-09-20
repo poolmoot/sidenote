@@ -1,5 +1,6 @@
 import AppKit
 import Carbon.HIToolbox
+import AppInfo
 import NotchWidgetAPI
 import SettingsFeature
 
@@ -25,10 +26,11 @@ final class ShortcutCenter {
     /// An arbitrary four-character signature Carbon requires to namespace hot key ids; it never
     /// leaves this process, so any stable value works.
     private static let signature = OSType(0x5344_4E43) // 'SDNC'
+    private let log = AppIdentity.current.logger("shortcuts")
 
     func start() {
         var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: OSType(kEventHotKeyPressed))
-        InstallEventHandler(
+        let status = InstallEventHandler(
             GetApplicationEventTarget(),
             { _, eventRef, userData in
                 guard let eventRef, let userData else { return noErr }
@@ -46,6 +48,9 @@ final class ShortcutCenter {
             Unmanaged.passUnretained(self).toOpaque(),
             &handlerRef
         )
+        if status != noErr {
+            log.error("InstallEventHandler failed: status \(status, privacy: .public)")
+        }
     }
 
     func stop() {
@@ -58,18 +63,29 @@ final class ShortcutCenter {
 
     /// Replaces every registered hot key with `assignments` — always a full tear-down and rebuild,
     /// so this is safe to call again any time a shortcut changes in Settings, not just once at
-    /// launch.
-    func apply(_ assignments: ShortcutAssignments, onToggle: @escaping () -> Void, onWidget: @escaping (WidgetID) -> Void) {
+    /// launch. Returns the slots Carbon refused to register (e.g. already owned by macOS or
+    /// another app), so the caller can surface that back to the Shortcuts tab.
+    @discardableResult
+    func apply(
+        _ assignments: ShortcutAssignments,
+        onToggle: @escaping () -> Void,
+        onWidget: @escaping (WidgetID) -> Void
+    ) -> Set<ShortcutAssignments.Slot> {
         unregisterAll()
+        var failed: Set<ShortcutAssignments.Slot> = []
         if let toggle = assignments.toggle {
-            register(toggle, action: onToggle)
+            if !register(toggle, action: onToggle) { failed.insert(.toggle) }
         }
         for (id, shortcut) in assignments.widgets {
-            register(shortcut) { onWidget(id) }
+            if !register(shortcut, action: { onWidget(id) }) { failed.insert(.widget(id)) }
         }
+        return failed
     }
 
-    private func register(_ shortcut: KeyShortcut, action: @escaping () -> Void) {
+    /// Registers one hot key. Returns whether it actually succeeded — `RegisterEventHotKey` can
+    /// fail, most commonly because the combination is already owned by macOS or another app.
+    @discardableResult
+    private func register(_ shortcut: KeyShortcut, action: @escaping () -> Void) -> Bool {
         let id = nextHotKeyID
         nextHotKeyID += 1
         var hotKeyRef: EventHotKeyRef?
@@ -82,8 +98,12 @@ final class ShortcutCenter {
             0,
             &hotKeyRef
         )
-        guard status == noErr, let hotKeyRef else { return }
+        guard status == noErr, let hotKeyRef else {
+            log.error("RegisterEventHotKey failed for \(shortcut.displayString, privacy: .public): status \(status, privacy: .public)")
+            return false
+        }
         registrations[id] = Registration(ref: hotKeyRef, action: action)
+        return true
     }
 
     private func fire(_ id: UInt32) {

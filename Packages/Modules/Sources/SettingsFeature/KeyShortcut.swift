@@ -60,7 +60,8 @@ public struct KeyShortcut: Equatable, Codable, Sendable {
 /// detection is unit-testable on its own; `Preferences` just persists one of these.
 public struct ShortcutAssignments: Equatable, Codable, Sendable {
     /// Which action a shortcut is (or would be) assigned to — a widget's, or the notch-wide toggle.
-    public enum Slot: Equatable, Codable, Sendable {
+    /// `Hashable` so `Preferences.unavailableShortcuts` can be a `Set`.
+    public enum Slot: Hashable, Codable, Sendable {
         case toggle
         case widget(WidgetID)
     }

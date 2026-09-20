@@ -36,7 +36,7 @@ public final class Preferences {
             // list above) can be told apart, next launch, from a widget that's new to this build
             // and has never had a chance to appear in the list at all — see
             // `resolveEnabledWidgetIDs`.
-            defaults.set(Preferences.knownWidgetIDs.map(\.rawValue), forKey: Key.knownWidgetIDsAsOfLastSave)
+            defaults.set(knownWidgetIDs.map(\.rawValue), forKey: Key.knownWidgetIDsAsOfLastSave)
         }
     }
 
@@ -90,11 +90,23 @@ public final class Preferences {
             defaults.set(data, forKey: Key.shortcuts)
         }
     }
+    /// Shortcuts Carbon couldn't actually register (e.g. already owned by macOS or another app) —
+    /// live registration status, not a user setting, so this is never persisted. Set by
+    /// `AppEnvironment` after each `ShortcutCenter.apply(_:...)`; `ShortcutsSettingsView` reads it
+    /// to mark a row "Unavailable".
+    public var unavailableShortcuts: Set<ShortcutAssignments.Slot> = []
 
     @ObservationIgnored private let defaults: UserDefaults
+    /// Every widget id this instance of the app actually has, in default tile order — passed in
+    /// by `AppEnvironment` from its real widget array (owner ruling, post-review: this used to be
+    /// a list hardcoded inside this module, which just moved "a widget touches shared code" from
+    /// `NotchWidgetAPI` to here instead of removing it). Defaults to `[]` for tests that don't
+    /// care about widget-specific behaviour.
+    @ObservationIgnored private let knownWidgetIDs: [WidgetID]
 
-    public init(defaults: UserDefaults = .standard) {
+    public init(defaults: UserDefaults = .standard, knownWidgetIDs: [WidgetID] = []) {
         self.defaults = defaults
+        self.knownWidgetIDs = knownWidgetIDs
         edge = defaults.string(forKey: Key.edge).flatMap(NotchEdge.init(rawValue:)) ?? .right
         displayID = defaults.string(forKey: Key.displayID)
         alongOffset = defaults.double(forKey: Key.alongOffset)
@@ -102,7 +114,9 @@ public final class Preferences {
         hidesInFullScreen = defaults.object(forKey: Key.hidesInFullScreen) as? Bool ?? false
         let savedWidgetIDs = (defaults.array(forKey: Key.enabledWidgetIDs) as? [String])?.map(WidgetID.init(rawValue:))
         let previouslyKnownIDs = Set((defaults.array(forKey: Key.knownWidgetIDsAsOfLastSave) as? [String] ?? []).map(WidgetID.init(rawValue:)))
-        enabledWidgetIDs = Preferences.resolveEnabledWidgetIDs(saved: savedWidgetIDs, previouslyKnown: previouslyKnownIDs)
+        enabledWidgetIDs = Preferences.resolveEnabledWidgetIDs(
+            saved: savedWidgetIDs, knownWidgetIDs: knownWidgetIDs, previouslyKnown: previouslyKnownIDs
+        )
 
         style = defaults.string(forKey: Key.style).flatMap(NotchStyle.init(rawValue:)) ?? .solid
         pillSize = defaults.string(forKey: Key.pillSize).flatMap(PillSize.init(rawValue:)) ?? .medium
@@ -156,7 +170,8 @@ public final class Preferences {
             style: style,
             pillSize: pillSize,
             reduceMotion: reduceMotion,
-            enabledWidgetIDs: enabledWidgetIDs
+            enabledWidgetIDs: enabledWidgetIDs,
+            accentColor: accentColor.color
         )
     }
 
@@ -173,19 +188,14 @@ public final class Preferences {
         min(max(value, hoverDelayRange.lowerBound), hoverDelayRange.upperBound)
     }
 
-    /// Every widget this build of the app ships, in the default tile order (spec §3.1). The one
-    /// place `Preferences` names a widget by id — it can't discover the app's actual widget array
-    /// (that would mean depending on the feature modules), so a saved id is considered "known" iff
-    /// it's one of these.
-    static let knownWidgetIDs: [WidgetID] = [.shelf, .notes, .reminders]
-
-    /// Filters `saved` down to known ids (an id from a widget that no longer exists is dropped,
-    /// and a repeat is dropped too), then appends any known widget that's both missing from
-    /// `saved` *and* absent from `previouslyKnown` — i.e. one this build knows about that never
-    /// had a chance to appear in a saved list, as opposed to one the user deliberately unchecked.
-    /// `saved == nil` (nothing saved at all yet) short-circuits to every known widget, enabled, in
-    /// the default order.
-    static func resolveEnabledWidgetIDs(saved: [WidgetID]?, previouslyKnown: Set<WidgetID> = []) -> [WidgetID] {
+    /// Filters `saved` down to `knownWidgetIDs` (an id from a widget that no longer exists is
+    /// dropped, and a repeat is dropped too), then appends any known widget that's both missing
+    /// from `saved` *and* absent from `previouslyKnown` — i.e. one this build knows about that
+    /// never had a chance to appear in a saved list, as opposed to one the user deliberately
+    /// unchecked. `saved == nil` (nothing saved at all yet) short-circuits to every known widget,
+    /// enabled, in `knownWidgetIDs`' order. A `static func` (rather than an instance method) so
+    /// it's directly testable without constructing a whole `Preferences`.
+    static func resolveEnabledWidgetIDs(saved: [WidgetID]?, knownWidgetIDs: [WidgetID], previouslyKnown: Set<WidgetID> = []) -> [WidgetID] {
         guard let saved else { return knownWidgetIDs }
         var result: [WidgetID] = []
         var seen = Set<WidgetID>()
